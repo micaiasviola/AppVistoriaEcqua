@@ -18,44 +18,28 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <NavigationContainer>
-        <Stack.Navigator 
+        <Stack.Navigator
           initialRouteName="Home"
           screenOptions={{
             headerStyle: { backgroundColor: '#f2f2f7' },
-            headerTintColor: '#007AFF',
-            headerTitleStyle: { fontWeight: 'bold', color: '#333' },
+            headerTintColor: '#333',
+            headerTitleStyle: { fontWeight: 'bold' },
           }}
         >
-          <Stack.Screen 
-            name="Home" 
-            component={HomeScreen} 
-            options={{ title: 'Obras ECQUA' }} 
+          {/* MUDANÇA AQUI: headerShown: false */}
+          <Stack.Screen
+            name="Home"
+            component={HomeScreen}
+            options={{ headerShown: false }}
           />
-          <Stack.Screen 
-            name="NewProject" 
-            component={NewProjectScreen} 
-            options={{ title: 'Novo Empreendimento' }} 
-          />
-          <Stack.Screen 
-            name="Units" 
-            component={UnitListScreen} 
-            options={{ title: 'Unidades' }} 
-          />
-          <Stack.Screen 
-            name="NewUnit" 
-            component={NewUnitScreen} 
-            options={{ title: 'Nova Unidade' }} 
-          />
-          <Stack.Screen 
-            name="InspectionType" 
-            component={InspectionTypeScreen} 
-            options={{ title: 'Tipo de Vistoria' }} 
-          />
-          <Stack.Screen 
-            name="Inspection" 
-            component={InspectionScreen} 
-            options={{ title: 'Vistoria de Entrada', headerShown: false }} 
-          />
+
+          {/* Mantenha as outras telas como estão por enquanto, 
+              ou coloque headerShown: false se quiser a navbar nelas também */}
+          <Stack.Screen name="NewProject" component={NewProjectScreen} options={{ title: 'Novo Empreendimento' }} />
+          <Stack.Screen name="Units" component={UnitListScreen} options={{ title: 'Unidades' }} />
+          <Stack.Screen name="NewUnit" component={NewUnitScreen} options={{ title: 'Nova Unidade' }} />
+          <Stack.Screen name="InspectionType" component={InspectionTypeScreen} options={{ title: 'Tipo de Vistoria' }} />
+          <Stack.Screen name="Inspection" component={InspectionScreen} options={{ title: 'Vistoria', headerShown: false }} />
         </Stack.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>
