@@ -1,4 +1,4 @@
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Image, Platform, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function Navbar() {
@@ -34,12 +34,13 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.95)', // Fundo branco levemente transparente
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
-    // Sombra para dar destaque
+    // Sombra para dar destaque (compatível com web via boxShadow)
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 3.84,
     elevation: 5,
+    ...(Platform.OS === 'web' ? { boxShadow: '0px 2px 3.84px rgba(0,0,0,0.1)' } : {}),
   },
   content: {
     flexDirection: 'row', // Horizontal

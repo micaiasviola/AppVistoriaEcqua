@@ -1,7 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import NetInfo from '@react-native-community/netinfo';
 import { Picker } from '@react-native-picker/picker';
+import { CommonActions } from '@react-navigation/native';
+import * as FileSystem from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useState } from 'react';
 import {
@@ -18,15 +21,16 @@ import {
     View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { supabase } from '../services/supabase';
+import { supabase, supabaseAnonKey, supabaseUrl } from '../services/supabase';
 
 export default function InspectionScreen({ route, navigation }) {
     const params = route?.params || {};
-    const { codigoUnidade, unidadeId, vistoriaId, engenheiroId, modoConstrutora } = params;
+    const { codigoUnidade, unidadeId, vistoriaId, engenheiroId, modoConstrutora, tipoVistoria } = params;
     
     const FOTOS_BUCKET = 'vistoria-fotos';
     const TIPO_FOTO_PADRAO = 'defeito';
-    const DELETES_KEY = `VISTORIA_DELETES_${unidadeId}`;
+    const vistoriaTipo = tipoVistoria || (modoConstrutora ? 'construtora' : 'entrada');
+    const DELETES_KEY = `VISTORIA_DELETES_${unidadeId}_${vistoriaTipo}`;
     const ENGENHEIRO_PADRAO_ID = 'f8b08af3-9fdd-4b28-b178-dc0773b33131';
 
     // --- ESTADOS GERAIS ---
@@ -34,6 +38,8 @@ export default function InspectionScreen({ route, navigation }) {
     const [descricao, setDescricao] = useState('');
     const [editandoId, setEditandoId] = useState(null);
     const [numeroItemSel, setNumeroItemSel] = useState(null);
+    const [statusSel, setStatusSel] = useState('pendente');
+    const [resolucaoObs, setResolucaoObs] = useState('');
     
     // Inicializa com ID da rota se existir
     const [vistoriaIdAtual, setVistoriaIdAtual] = useState(vistoriaId || '');
@@ -56,6 +62,11 @@ export default function InspectionScreen({ route, navigation }) {
 
     // --- ESTADOS DO MODAL DE ENTREGA (Construtora) ---
     const [modalVisible, setModalVisible] = useState(false);
+    const [fotoMenuVisible, setFotoMenuVisible] = useState(false);
+    const [agendaVisible, setAgendaVisible] = useState(false);
+    const [agendaData, setAgendaData] = useState('');
+    const [showDatePicker, setShowDatePicker] = useState(false);
+    const [agendaDateObj, setAgendaDateObj] = useState(new Date());
     const [aprovado, setAprovado] = useState(false);
     const [temChaves, setTemChaves] = useState(false);
     const [fotoChaves, setFotoChaves] = useState(null);
@@ -95,7 +106,7 @@ export default function InspectionScreen({ route, navigation }) {
 
         const state = await NetInfo.fetch();
         if (!state.isConnected) {
-            const idSalvo = await AsyncStorage.getItem(`LAST_VISTORIA_ID_${unidadeId}`);
+            const idSalvo = await AsyncStorage.getItem(obterLastVistoriaKey());
             if (idSalvo) setVistoriaIdAtual(idSalvo);
             return;
         }
@@ -123,6 +134,7 @@ export default function InspectionScreen({ route, navigation }) {
                 .from('vistorias')
                 .select('id')
                 .eq('unidade_id', unidadeId)
+                .eq('tipo_vistoria', vistoriaTipo)
                 .order('created_at', { ascending: false })
                 .limit(1)
                 .maybeSingle();
@@ -130,17 +142,17 @@ export default function InspectionScreen({ route, navigation }) {
             if (existente) {
                 console.log("Usando vistoria existente:", existente.id);
                 setVistoriaIdAtual(existente.id);
-                await AsyncStorage.setItem(`LAST_VISTORIA_ID_${unidadeId}`, existente.id);
+                await AsyncStorage.setItem(obterLastVistoriaKey(), existente.id);
             } else {
                 console.log("Criando nova vistoria...");
                 const hoje = new Date().toISOString().slice(0, 10);
                 const { data: nova } = await supabase
                     .from('vistorias')
-                    .insert([{ unidade_id: unidadeId, engenheiro_id: engenheiroParaUso, data_vistoria: hoje }])
+                    .insert([{ unidade_id: unidadeId, engenheiro_id: engenheiroParaUso, data_vistoria: hoje, tipo_vistoria: vistoriaTipo }])
                     .select().single();
                 
                 setVistoriaIdAtual(nova.id);
-                await AsyncStorage.setItem(`LAST_VISTORIA_ID_${unidadeId}`, nova.id);
+                await AsyncStorage.setItem(obterLastVistoriaKey(), nova.id);
             }
         } catch (err) { console.error("Erro ao garantir vistoria:", err); }
     };
@@ -176,6 +188,7 @@ export default function InspectionScreen({ route, navigation }) {
                     numero_item: i.numero_item,
                     descricao: i.descricao_defeito,
                     observacao_interna: i.observacao_interna,
+                    resolucao_obs: i.resolucao_obs,
                     status: i.status,
                     categoria: checklistMap[i.checklist_item_id]?.categoria || '',
                     item: checklistMap[i.checklist_item_id]?.descricao || i.observacao_interna || '',
@@ -248,30 +261,128 @@ export default function InspectionScreen({ route, navigation }) {
     };
 
     const obterNomeAmbiente = (id) => ambientes.find(a => a.id === id)?.nome || '';
-    const obterCacheKey = () => vistoriaIdAtual ? `VISTORIA_${vistoriaIdAtual}` : `VISTORIA_${unidadeId}`;
-    const obterDeletesKey = () => `VISTORIA_DELETES_${unidadeId}`;
+    const obterCacheKey = () => vistoriaIdAtual ? `VISTORIA_${vistoriaIdAtual}` : `VISTORIA_${unidadeId}_${vistoriaTipo}`;
+    const obterDeletesKey = () => `VISTORIA_DELETES_${unidadeId}_${vistoriaTipo}`;
+    const obterLastVistoriaKey = () => `LAST_VISTORIA_ID_${unidadeId}_${vistoriaTipo}`;
+
+    const ordenarApontamentos = (lista) => [...(lista || [])].sort((a, b) => {
+        const na = Number(a?.numero_item) || 0;
+        const nb = Number(b?.numero_item) || 0;
+        return na - nb;
+    });
     
     // --- LÓGICA DE FOTOS ---
     const lidarComFoto = () => {
-        Alert.alert("Adicionar Foto", "Escolha:", [
-            { text: "Cancelar", style: "cancel" },
-            { text: "Câmera", onPress: () => processarImagem(true) },
-            { text: "Galeria", onPress: () => processarImagem(false) },
-        ]);
+        setFotoMenuVisible(true);
+    };
+
+    const abrirCamera = () => {
+        setFotoMenuVisible(false);
+        setTimeout(() => {
+            processarImagem(true);
+        }, 250);
+    };
+
+    const abrirGaleria = () => {
+        setFotoMenuVisible(false);
+        setTimeout(() => {
+            processarImagem(false);
+        }, 250);
     };
 
     const processarImagem = async (useCamera) => {
-        const opts = { mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.5, allowsEditing: false };
+        const opts = { quality: 0.5, allowsEditing: false };
+        // adiciona mediaTypes se disponível (nem sempre presente no web impl)
+        try {
+            if (ImagePicker && ImagePicker.MediaType && ImagePicker.MediaType.Images) {
+                opts.mediaTypes = ImagePicker.MediaType.Images;
+            }
+        } catch (e) {}
         let res;
-        if (useCamera) {
-            const { status } = await ImagePicker.requestCameraPermissionsAsync();
-            if (status !== 'granted') return Alert.alert("Erro", "Sem permissão");
-            res = await ImagePicker.launchCameraAsync(opts);
-        } else {
-            res = await ImagePicker.launchImageLibraryAsync(opts);
+        try {
+            if (useCamera) {
+                if (Platform.OS === 'web') {
+                    Alert.alert("Indisponível", "A câmera não é suportada no web.");
+                    return;
+                }
+                const { status, canAskAgain } = await ImagePicker.getCameraPermissionsAsync();
+                if (status !== 'granted') {
+                    const req = await ImagePicker.requestCameraPermissionsAsync();
+                    if (req.status !== 'granted') {
+                        const msg = canAskAgain
+                            ? "Permissão de câmera negada."
+                            : "Permissão de câmera bloqueada. Ative nas configurações do Android.";
+                        Alert.alert("Erro", msg);
+                        return;
+                    }
+                }
+                try {
+                    res = await ImagePicker.launchCameraAsync(opts);
+                } catch (e) {
+                    console.error('Erro launchCameraAsync:', e);
+                    Alert.alert('Erro', 'Não foi possível abrir a câmera: ' + (e?.message || String(e)));
+                    return;
+                }
+            } else {
+                if (Platform.OS !== 'web') {
+                    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                    if (status !== 'granted') return Alert.alert("Erro", "Sem permissão");
+                }
+                // no web, fallback para input file se a API lançar erro
+                if (Platform.OS === 'web') {
+                    try {
+                        if (ImagePicker.launchImageLibraryAsync) {
+                            res = await ImagePicker.launchImageLibraryAsync(opts);
+                        } else {
+                            throw new Error('launchImageLibraryAsync nao disponivel');
+                        }
+                    } catch (e) {
+                        // fallback: criar input file e ler como dataURL
+                        try {
+                            res = await new Promise((resolve, reject) => {
+                                const input = document.createElement('input');
+                                input.type = 'file';
+                                input.accept = 'image/*';
+                                input.onchange = async () => {
+                                    const file = input.files && input.files[0];
+                                    if (!file) return resolve({ canceled: true });
+                                    const reader = new FileReader();
+                                    reader.onload = () => {
+                                        resolve({ canceled: false, assets: [{ uri: reader.result }] });
+                                    };
+                                    reader.onerror = reject;
+                                    reader.readAsDataURL(file);
+                                };
+                                input.click();
+                            });
+                        } catch (fb) {
+                            console.error('Fallback file input error:', fb);
+                            Alert.alert('Erro', 'Não foi possível abrir a galeria no navegador.');
+                            return;
+                        }
+                    }
+                } else {
+                    try {
+                        res = await ImagePicker.launchImageLibraryAsync(opts);
+                    } catch (e) {
+                        console.error('Erro launchImageLibraryAsync:', e);
+                        Alert.alert('Erro', 'Não foi possível abrir a galeria: ' + (e?.message || String(e)));
+                        return;
+                    }
+                }
+            }
+        } catch (e) {
+            console.error("Erro ao abrir imagem:", e);
+            Alert.alert("Erro", "Não foi possível abrir a câmera/galeria.");
+            return;
         }
-        
-        if (!res.canceled && res.assets[0]) {
+
+        if (!res) {
+            Alert.alert("Erro", "A câmera não abriu. Verifique permissões e reinicie o app.");
+            return;
+        }
+
+        if (!res?.canceled && res?.assets?.[0]) {
             setFotos([...fotos, res.assets[0].uri]);
         }
     };
@@ -299,18 +410,161 @@ export default function InspectionScreen({ route, navigation }) {
                 continue;
             }
 
+            let uploadSuccess = false;
+            let lastError = null;
             try {
                 const ext = uri.split('.').pop();
                 const path = `${unidadeId}/${itemId}/${Date.now()}_${i}.${ext}`;
-                const resp = await fetch(uri);
-                const blob = await resp.blob();
-                
-                const { error } = await supabase.storage.from(FOTOS_BUCKET).upload(path, blob, { upsert: true });
-                if (error) throw error;
 
-                const { data } = supabase.storage.from(FOTOS_BUCKET).getPublicUrl(path);
-                urls.push(data.publicUrl);
-                paths.push(path);
+                // Tenta fetch -> blob (funciona na maior parte dos casos)
+                let blob;
+                try {
+                    const resp = await fetch(uri);
+                    blob = await resp.blob();
+                } catch (fetchErr) {
+                    // Fallback: tenta ler arquivo local como base64 e converter
+                    try {
+                        if (uri.startsWith('file://') || uri.startsWith('content://')) {
+                            const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+                            const base64ToBlob = async (b64, contentType = 'image/jpeg') => {
+                                // Prefer browser atob -> Uint8Array -> Blob
+                                if (typeof atob === 'function') {
+                                    const binary = atob(b64);
+                                    const len = binary.length;
+                                    const bytes = new Uint8Array(len);
+                                    for (let j = 0; j < len; j++) bytes[j] = binary.charCodeAt(j);
+                                    return new Blob([bytes], { type: contentType });
+                                }
+                                // Fallback: use data URL + fetch to obtain a Blob (works in web workers/environments with fetch)
+                                try {
+                                    const dataUrl = `data:${contentType};base64,${b64}`;
+                                    const res = await fetch(dataUrl);
+                                    const b = await res.blob();
+                                    return b;
+                                } catch (e) {
+                                    throw new Error('No base64 -> blob available');
+                                }
+                            };
+                            blob = await base64ToBlob(base64);
+                        } else {
+                            throw fetchErr;
+                        }
+                    } catch (fallbackErr) {
+                        lastError = fallbackErr;
+                        throw fallbackErr;
+                    }
+                }
+
+                // normaliza blob se for Buffer (node) para Blob
+                try {
+                    if (typeof Buffer !== 'undefined' && typeof blob !== 'undefined' && blob && blob.constructor && blob.constructor.name === 'Buffer') {
+                        const maybe = new Blob([blob], { type: 'image/jpeg' });
+                        blob = maybe;
+                    }
+                } catch (normErr) {
+                    console.warn('Erro ao normalizar blob:', normErr);
+                }
+
+                // Upload com retry/exponential backoff
+                const uploadWithRetry = async (maxAttempts = 3) => {
+                    let attempt = 0;
+                    while (attempt < maxAttempts) {
+                        attempt += 1;
+                        try {
+                            console.log('Uploading', path, {
+                                blobType: typeof blob,
+                                blobCtor: blob?.constructor?.name,
+                                blobSize: blob?.size || blob?.length || 'unknown',
+                                blobMime: blob?.type || null
+                            });
+                            const { error } = await supabase.storage.from(FOTOS_BUCKET).upload(path, blob, { upsert: true });
+                            if (error) {
+                                console.warn(`Supabase upload error attempt ${attempt} for ${path}:`, error);
+                                throw error;
+                            }
+                            return true;
+                        } catch (upErr) {
+                            lastError = upErr;
+                            console.warn(`Upload attempt ${attempt} failed for ${path}:`, upErr?.message || upErr);
+                            if (attempt >= maxAttempts) {
+                                console.error('Upload final failure for', path, upErr);
+                                return false;
+                            }
+                            const delay = 1000 * Math.pow(2, attempt - 1);
+                            await new Promise(r => setTimeout(r, delay));
+                        }
+                    }
+                    return false;
+                };
+
+                // fallback via PUT direto para o endpoint de storage (usa anon key)
+                const directPutUpload = async () => {
+                    const url = `${supabaseUrl}/storage/v1/object/${FOTOS_BUCKET}/${path}`;
+                    try {
+                        console.log('Attempting direct PUT to storage for', path);
+                        const resp = await fetch(url, {
+                            method: 'PUT',
+                            headers: {
+                                Authorization: `Bearer ${supabaseAnonKey}`,
+                                apikey: supabaseAnonKey,
+                                'Content-Type': blob?.type || 'application/octet-stream'
+                            },
+                            body: blob
+                        });
+                        if (!resp.ok) {
+                            const text = await resp.text().catch(() => null);
+                            throw new Error(`Direct PUT failed: ${resp.status} ${resp.statusText} ${text || ''}`);
+                        }
+                        console.log('Direct PUT succeeded for', path);
+                        return true;
+                    } catch (err) {
+                        lastError = err;
+                        console.error('Direct PUT failed for', path, err);
+                        // Android fallback: XMLHttpRequest
+                        if (Platform.OS === 'android' && typeof XMLHttpRequest !== 'undefined') {
+                            try {
+                                await new Promise((resolve, reject) => {
+                                    const xhr = new XMLHttpRequest();
+                                    xhr.open('PUT', url);
+                                    xhr.setRequestHeader('Authorization', `Bearer ${supabaseAnonKey}`);
+                                    xhr.setRequestHeader('apikey', supabaseAnonKey);
+                                    xhr.setRequestHeader('Content-Type', blob?.type || 'application/octet-stream');
+                                    xhr.onload = () => {
+                                        if (xhr.status >= 200 && xhr.status < 300) {
+                                            console.log('Direct PUT via XHR succeeded for', path);
+                                            resolve();
+                                        } else {
+                                            reject(new Error(`XHR PUT failed: ${xhr.status} ${xhr.responseText}`));
+                                        }
+                                    };
+                                    xhr.onerror = () => reject(new Error('XHR network error'));
+                                    xhr.send(blob);
+                                });
+                                return true;
+                            } catch (xhrErr) {
+                                lastError = xhrErr;
+                                return false;
+                            }
+                        }
+                        return false;
+                    }
+                };
+
+                // Tenta upload com todos os fallbacks
+                let uploaded = await uploadWithRetry(3);
+                if (!uploaded) {
+                    console.warn('uploadWithRetry failed, trying direct PUT for', path);
+                    uploaded = await directPutUpload();
+                }
+
+                if (uploaded) {
+                    const { data } = supabase.storage.from(FOTOS_BUCKET).getPublicUrl(path);
+                    urls.push(data.publicUrl);
+                    paths.push(path);
+                    uploadSuccess = true;
+                } else {
+                    throw lastError || new Error('Falha no upload da foto');
+                }
             } catch (e) {
                 console.error("Erro upload foto:", e);
                 allUploaded = false;
@@ -343,7 +597,8 @@ export default function InspectionScreen({ route, navigation }) {
             item: itemNomeSel,
             descricao: descricao,
             observacao_interna: itemNomeSel,
-            status: 'pendente',
+            resolucao_obs: statusSel === 'resolvido' ? resolucaoObs : null,
+            status: statusSel,
             uris: fotos,
             synced: false,
             ambiente: ambienteNomeSel // Helper visual
@@ -358,7 +613,7 @@ export default function InspectionScreen({ route, navigation }) {
         await AsyncStorage.setItem(obterCacheKey(), JSON.stringify(sanitizarListaParaCache(novaLista)));
 
         // Limpa form
-        setFotos([]); setDescricao(''); setItemIdSel(''); setItemNomeSel(''); setEditandoId(null); setNumeroItemSel(null);
+        setFotos([]); setDescricao(''); setItemIdSel(''); setItemNomeSel(''); setEditandoId(null); setNumeroItemSel(null); setStatusSel('pendente'); setResolucaoObs('');
 
         // 2. Envia se online
         if (online && vistoriaIdAtual) {
@@ -378,6 +633,7 @@ export default function InspectionScreen({ route, navigation }) {
                 numero_item: item.numero_item || 1, // Fallback
                 descricao_defeito: item.descricao,
                 observacao_interna: item.observacao_interna,
+                resolucao_obs: item.resolucao_obs || null,
                 status: item.status
             };
 
@@ -423,23 +679,30 @@ export default function InspectionScreen({ route, navigation }) {
         setDescricao(item.descricao);
         setFotos(item.uris || []);
         setNumeroItemSel(item.numero_item);
+        setStatusSel(item.status || 'pendente');
+        setResolucaoObs(item.resolucao_obs || '');
     };
 
-    const excluirItem = (id) => {
+    const excluirItem = (item) => {
+        const itemId = item?.id;
         Alert.alert("Excluir", "Confirmar?", [
             { text: "Não" },
             { text: "Sim", onPress: async () => {
-                const novaLista = apontamentos.filter(i => i.id !== id);
+                const novaLista = apontamentos.filter(i => String(i.id) !== String(itemId));
                 setApontamentos(novaLista);
                 AsyncStorage.setItem(obterCacheKey(), JSON.stringify(sanitizarListaParaCache(novaLista)));
 
-                if (typeof id === 'string' && id.length > 20) {
-                    if (online) {
-                        await supabase.from('itens_vistoria').delete().eq('id', id);
-                    } else {
-                        const dels = await carregarExclusoes();
-                        salvarExclusoes([...dels, id]);
-                    }
+                if (!itemId) return;
+
+                if (item.synced && online) {
+                    const { error } = await supabase.from('itens_vistoria').delete().eq('id', itemId);
+                    if (error) console.error('Erro ao excluir:', error);
+                    return;
+                }
+
+                if (!online) {
+                    const dels = await carregarExclusoes();
+                    salvarExclusoes([...dels, itemId]);
                 }
             }}
         ]);
@@ -502,10 +765,118 @@ export default function InspectionScreen({ route, navigation }) {
 
     // --- FINALIZAÇÃO (CONSTRUTORA) ---
     const adicionarFotoChaves = async () => {
+        if (Platform.OS === 'web') {
+            Alert.alert('Indisponivel', 'A camera nao e suportada no web.');
+            return;
+        }
         const { status } = await ImagePicker.requestCameraPermissionsAsync();
         if (status !== 'granted') return Alert.alert("Erro", "Sem permissão");
-        const res = await ImagePicker.launchCameraAsync({ quality: 0.5 });
+        const res = await ImagePicker.launchCameraAsync({ quality: 0.5, mediaTypes: ImagePicker.MediaType.Images });
         if (!res.canceled) setFotoChaves(res.assets[0].uri);
+    };
+
+    const criarRevistoriaAgendada = async () => {
+        const pendentes = apontamentos.filter((i) => i.status !== 'resolvido');
+        if (!pendentes.length) {
+            Alert.alert('Info', 'Nao ha itens pendentes.');
+            return;
+        }
+
+        const dataAgendada = agendaData.trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dataAgendada)) {
+            Alert.alert('Erro', 'Informe a data no formato YYYY-MM-DD.');
+            return;
+        }
+
+        const { data: ultima } = await supabase
+            .from('vistorias')
+            .select('revisao_num')
+            .eq('unidade_id', unidadeId)
+            .eq('tipo_vistoria', 'revistoria')
+            .order('revisao_num', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        const revisaoNum = (ultima?.revisao_num || 0) + 1;
+
+        const { data: nova, error: novaError } = await supabase
+            .from('vistorias')
+            .insert([{
+                unidade_id: unidadeId,
+                engenheiro_id: engenheiroIdAtual,
+                data_vistoria: dataAgendada,
+                data_agendada: dataAgendada,
+                tipo_vistoria: 'revistoria',
+                revisao_num: revisaoNum,
+                vistoria_pai_id: vistoriaIdAtual,
+                status: 'agendada'
+            }])
+            .select()
+            .single();
+
+        if (novaError || !nova?.id) {
+            console.error('Erro ao criar revistoria:', novaError);
+            Alert.alert('Erro', 'Nao foi possivel criar a revistoria.');
+            return;
+        }
+
+        const itensPayload = pendentes.map((i) => ({
+            vistoria_id: nova.id,
+            checklist_item_id: i.checklist_item_id,
+            ambiente_id: i.ambiente_id,
+            numero_item: i.numero_item,
+            descricao_defeito: i.descricao,
+            observacao_interna: i.observacao_interna,
+            status: 'pendente',
+            item_origem_id: i.id
+        }));
+
+        const { data: novosItens, error: itensError } = await supabase
+            .from('itens_vistoria')
+            .insert(itensPayload)
+            .select('id, item_origem_id');
+
+        if (itensError) {
+            console.error('Erro ao copiar itens:', itensError);
+            Alert.alert('Erro', 'Nao foi possivel copiar os itens para a revistoria.');
+            return;
+        }
+
+        const mapaItens = (novosItens || []).reduce((acc, item) => {
+            acc[item.item_origem_id] = item.id;
+            return acc;
+        }, {});
+
+        const { data: fotosOriginais } = await supabase
+            .from('fotos_vistoria')
+            .select('item_id, storage_path, tipo')
+            .in('item_id', pendentes.map((i) => i.id));
+
+        if (fotosOriginais?.length) {
+            const fotosPayload = fotosOriginais
+                .filter((f) => mapaItens[f.item_id])
+                .map((f) => ({
+                    item_id: mapaItens[f.item_id],
+                    storage_path: f.storage_path,
+                    tipo: f.tipo
+                }));
+
+            if (fotosPayload.length) {
+                await supabase.from('fotos_vistoria').insert(fotosPayload);
+            }
+        }
+
+        setAgendaVisible(false);
+        setAgendaData('');
+        navigation.dispatch(
+            CommonActions.reset({
+                index: 0,
+                routes: [{
+                    name: 'VistoriaList',
+                    params: { unidadeId, codigoUnidade, modoConstrutora: false, tipoVistoria: 'revistoria' }
+                }]
+            })
+        );
     };
 
     const handleBotaoFinalizar = () => {
@@ -519,7 +890,7 @@ export default function InspectionScreen({ route, navigation }) {
     const processarFinalizacao = async (dadosExtras = {}) => {
         setLoading(true);
         try {
-            await AsyncStorage.setItem(`VISTORIA_FINALIZADA_${unidadeId}`, new Date().toISOString());
+            await AsyncStorage.setItem(`VISTORIA_FINALIZADA_${unidadeId}_${vistoriaTipo}`, new Date().toISOString());
             
             if (modoConstrutora && online && vistoriaIdAtual) {
                 let urlFoto = null;
@@ -535,21 +906,52 @@ export default function InspectionScreen({ route, navigation }) {
                     }
                 }
 
-                await supabase.from('vistorias').update({
+                const payload = {
                     status_aprovacao: dadosExtras.aprovado ? 'aprovado' : 'reprovado',
                     chaves_entregues: dadosExtras.temChaves,
                     observacao_final: dadosExtras.obsFinal,
                     foto_chaves: urlFoto
-                }).eq('id', vistoriaIdAtual);
+                };
+                await supabase.from('vistorias').update(payload).eq('id', vistoriaIdAtual);
             }
-            
+
             setModalVisible(false);
-            Alert.alert("Sucesso", "Vistoria Finalizada!");
-            navigation.goBack();
+
+            const resetToList = () => navigation.dispatch(
+                CommonActions.reset({
+                    index: 0,
+                    routes: [{
+                        name: 'VistoriaList',
+                        params: { unidadeId, codigoUnidade, modoConstrutora: !!modoConstrutora, tipoVistoria: vistoriaTipo }
+                    }]
+                })
+            );
+
+            if (modoConstrutora) {
+                Alert.alert("Vistoria finalizada", "Deseja agendar revistoria?", [
+                    {
+                        text: 'Nao',
+                        onPress: resetToList
+                    },
+                    { text: 'Agendar', onPress: () => setAgendaVisible(true) }
+                ]);
+                return;
+            }
+
+            Alert.alert("Vistoria Finalizada", "A vistoria foi salva.", [
+                {
+                    text: 'OK',
+                    onPress: resetToList
+                }
+            ]);
         } catch (e) {
             console.error(e);
             Alert.alert("Erro", "Salvo localmente apenas.");
-            navigation.goBack();
+            if (navigation.canGoBack && navigation.canGoBack()) {
+                navigation.goBack();
+            } else {
+                navigation.navigate('UnidadesTab', { screen: 'Home' });
+            }
         } finally {
             setLoading(false);
         }
@@ -558,16 +960,33 @@ export default function InspectionScreen({ route, navigation }) {
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: '#f2f2f7' }}>
             <View style={styles.headerRow}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+                <TouchableOpacity onPress={() => { if (navigation.canGoBack && navigation.canGoBack()) navigation.goBack(); else navigation.navigate('UnidadesTab', { screen: 'Home' }); }} style={styles.backButton}>
                     <Ionicons name="arrow-back" size={24} color="#007AFF" />
                     <Text style={{color: '#007AFF', marginLeft: 5}}>Voltar</Text>
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>{modoConstrutora ? "Vistoria Construtora" : `Unidade ${codigoUnidade}`}</Text>
-                <View style={[styles.statusBadge, { backgroundColor: online ? '#d4edda' : '#f8d7da' }]}>
-                    {syncing ? <ActivityIndicator size="small" color="#333"/> : (
-                        <Text style={{ color: online ? '#155724' : '#721c24', fontSize: 10, fontWeight: 'bold' }}>{online ? 'ONLINE' : 'OFFLINE'}</Text>
+                <View style={styles.statusContainer}>
+                    <View style={[styles.statusBadge, { backgroundColor: online ? '#d4edda' : '#f8d7da' }]}>
+                        {syncing ? <ActivityIndicator size="small" color="#333"/> : (
+                            <Text style={{ color: online ? '#155724' : '#721c24', fontSize: 10, fontWeight: 'bold' }}>{online ? 'ONLINE' : 'OFFLINE'}</Text>
+                        )}
+                    </View>
+                    {apontamentos.filter(a => !a.synced).length > 0 && (
+                        <View style={styles.unsyncedBadge}>
+                            <Text style={styles.unsyncedText}>{apontamentos.filter(a => !a.synced).length} não sync</Text>
+                        </View>
                     )}
                 </View>
+            </View>
+            <View style={styles.breadcrumbRow}>
+                <Text style={styles.breadcrumbText}>Unidade {codigoUnidade} • {vistoriaTipo}</Text>
+                <TouchableOpacity
+                    style={styles.homeButton}
+                    onPress={() => navigation.navigate('UnidadesTab', { screen: 'Home' })}
+                >
+                    <Ionicons name="home-outline" size={16} color="#111" style={styles.homeIcon} />
+                    <Text style={styles.homeText}>Inicio</Text>
+                </TouchableOpacity>
             </View>
 
             <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
@@ -628,6 +1047,29 @@ export default function InspectionScreen({ route, navigation }) {
                         <Text style={styles.label}>5. Observação:</Text>
                         <TextInput placeholder="Descreva..." value={descricao} onChangeText={setDescricao} multiline style={styles.input} />
 
+                        {vistoriaTipo === 'revistoria' && (
+                            <View style={styles.switchRow}>
+                                <Text style={styles.switchLabel}>Resolvido?</Text>
+                                <Switch
+                                    value={statusSel === 'resolvido'}
+                                    onValueChange={(v) => setStatusSel(v ? 'resolvido' : 'pendente')}
+                                />
+                            </View>
+                        )}
+
+                        {vistoriaTipo === 'revistoria' && statusSel === 'resolvido' && (
+                            <>
+                                <Text style={styles.label}>6. Observacao da resolucao:</Text>
+                                <TextInput
+                                    placeholder="Descreva a resolucao..."
+                                    value={resolucaoObs}
+                                    onChangeText={setResolucaoObs}
+                                    multiline
+                                    style={styles.input}
+                                />
+                            </>
+                        )}
+
                         <TouchableOpacity onPress={confirmarApontamento} style={styles.buttonConfirmar}>
                             <Text style={styles.buttonConfirmarText}>{editandoId ? "SALVAR" : "ADICIONAR"}</Text>
                         </TouchableOpacity>
@@ -635,31 +1077,105 @@ export default function InspectionScreen({ route, navigation }) {
 
                     {/* LISTA */}
                     <Text style={styles.subtitle}>Itens ({apontamentos.length}):</Text>
-                    {apontamentos.map((item) => (
+                    {ordenarApontamentos(apontamentos).map((item) => (
                         <View key={item.id} style={styles.historyItem}>
                             {item.uris?.[0] && <Image source={{ uri: item.uris[0] }} style={styles.thumb} />}
                             <View style={styles.historyText}>
                                 <Text style={styles.historyCat}>{item.ambiente || obterNomeAmbiente(item.ambiente_id)}</Text>
                                 <Text style={styles.historyTitle}>{item.item}</Text>
                                 <Text numberOfLines={2} style={styles.historyDesc}>{item.descricao}</Text>
+                                {item.status === 'resolvido' && (
+                                    <Text style={{fontSize:9, color:'green'}}>RESOLVIDO</Text>
+                                )}
                                 {!item.synced && <Text style={{fontSize:9, color:'orange'}}>PENDENTE</Text>}
                             </View>
                             <View>
                                 <TouchableOpacity onPress={() => editarItem(item)}><Ionicons name="create-outline" size={24} color="#666" /></TouchableOpacity>
-                                <TouchableOpacity onPress={() => excluirItem(item.id)}><Ionicons name="trash-outline" size={24} color="red" /></TouchableOpacity>
+                                <TouchableOpacity onPress={() => excluirItem(item)}><Ionicons name="trash-outline" size={24} color="red" /></TouchableOpacity>
                             </View>
                         </View>
                     ))}
                     
-                    <View style={{height: 100}} />
+                    <View style={{height: 24}} />
                 </ScrollView>
             </KeyboardAvoidingView>
 
-            <View style={styles.footer}>
+            <View style={styles.footerActions}>
+                <TouchableOpacity
+                    onPress={() => navigation.dispatch(
+                        CommonActions.reset({
+                            index: 0,
+                            routes: [{
+                                name: 'VistoriaList',
+                                params: { unidadeId, codigoUnidade, modoConstrutora: !!modoConstrutora, tipoVistoria: vistoriaTipo }
+                            }]
+                        })
+                    )}
+                    style={styles.buttonSecondary}
+                >
+                    <Text style={styles.buttonSecondaryText}>VER VISTORIAS</Text>
+                </TouchableOpacity>
                 <TouchableOpacity onPress={handleBotaoFinalizar} style={styles.buttonFinalizar}>
                     <Text style={styles.buttonFinalizarText}>{modoConstrutora ? "AVANÇAR PARA ENTREGA" : "FINALIZAR VISTORIA"}</Text>
                 </TouchableOpacity>
             </View>
+
+            {/* MODAL FOTO (ESCOLHA) */}
+            <Modal animationType="fade" transparent={true} visible={fotoMenuVisible} onRequestClose={() => setFotoMenuVisible(false)}>
+                <View style={styles.modalOverlay}>
+                    <View style={styles.photoModalContent}>
+                        <Text style={styles.modalTitle}>Adicionar Foto</Text>
+                        {Platform.OS !== 'web' && (
+                            <TouchableOpacity style={styles.photoActionBtn} onPress={abrirCamera}>
+                                <Text style={styles.photoActionText}>Câmera</Text>
+                            </TouchableOpacity>
+                        )}
+                        <TouchableOpacity style={styles.photoActionBtn} onPress={abrirGaleria}>
+                            <Text style={styles.photoActionText}>Galeria</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.photoActionCancel}
+                            onPress={() => setFotoMenuVisible(false)}
+                        >
+                            <Text style={styles.photoCancelText}>Cancelar</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* MODAL AGENDAR REVISTORIA */}
+            <Modal animationType="fade" transparent={true} visible={agendaVisible} onRequestClose={() => setAgendaVisible(false)}>
+                <View style={styles.modalOverlay}>
+                    <View style={styles.agendaModalContent}>
+                        <Text style={styles.modalTitle}>Agendar Revistoria</Text>
+                        <Text style={styles.modalHint}>Escolha a data</Text>
+                        <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.modalInput}>
+                            <Text>{agendaData ? agendaData : 'Selecionar data'}</Text>
+                        </TouchableOpacity>
+                        {showDatePicker && (
+                            <DateTimePicker
+                                value={agendaDateObj}
+                                mode="date"
+                                display="calendar"
+                                onChange={(event, selectedDate) => {
+                                    setShowDatePicker(false);
+                                    if (selectedDate) {
+                                        setAgendaDateObj(selectedDate);
+                                        const yyyy = selectedDate.getFullYear();
+                                        const mm = String(selectedDate.getMonth() + 1).padStart(2, '0');
+                                        const dd = String(selectedDate.getDate()).padStart(2, '0');
+                                        setAgendaData(`${yyyy}-${mm}-${dd}`);
+                                    }
+                                }}
+                            />
+                        )}
+                        <View style={styles.modalButtons}>
+                            <TouchableOpacity onPress={() => setAgendaVisible(false)} style={styles.modalBtnCancel}><Text>Voltar</Text></TouchableOpacity>
+                            <TouchableOpacity onPress={criarRevistoriaAgendada} style={styles.modalBtnConfirm}><Text style={{color:'#fff'}}>AGENDAR</Text></TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
 
             {/* MODAL CONSTRUTORA */}
             <Modal animationType="slide" transparent={true} visible={modalVisible} onRequestClose={() => setModalVisible(false)}>
@@ -696,41 +1212,70 @@ export default function InspectionScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-    headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15, backgroundColor: '#fff', borderBottomWidth: 1, borderColor: '#e5e5ea' },
+    headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15, backgroundColor: '#fff', borderBottomWidth: 1, borderColor: '#eef0f3' },
     backButton: { flexDirection: 'row', alignItems: 'center' },
-    headerTitle: { fontSize: 16, fontWeight: 'bold', color: '#333' },
+    headerTitle: { fontSize: 16, fontWeight: '700', color: '#111' },
     statusBadge: { padding: 5, borderRadius: 4 },
-    scrollContent: { padding: 15 },
-    card: { backgroundColor: '#fff', padding: 15, borderRadius: 12, marginBottom: 20 },
+    syncBadge: { 
+        backgroundColor: '#ff9500', 
+        borderRadius: 10, 
+        minWidth: 20, 
+        height: 20, 
+        alignItems: 'center', 
+        justifyContent: 'center',
+        marginLeft: 8
+    },
+    syncBadgeText: { 
+        color: '#fff', 
+        fontSize: 12, 
+        fontWeight: '600' 
+    },
+    breadcrumbRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8, backgroundColor: '#f6f7f9', borderBottomWidth: 1, borderColor: '#eef0f3' },
+    breadcrumbText: { fontSize: 12, color: '#6b7280', textTransform: 'capitalize' },
+    homeButton: { flexDirection: 'row', alignItems: 'center', padding: 6, borderRadius: 8, backgroundColor: '#fff', borderWidth: 1, borderColor: '#e5e7eb' },
+    homeIcon: { marginRight: 6 },
+    homeText: { fontSize: 12, fontWeight: '600', color: '#111' },
+    scrollContent: { padding: 16, paddingBottom: 12 },
+    card: { backgroundColor: '#fff', padding: 16, borderRadius: 12, marginBottom: 16, borderWidth: 1, borderColor: '#eef0f3' },
     cardEditing: { borderColor: '#ffc107', borderWidth: 2 },
-    cardTitle: { fontWeight: 'bold', textAlign: 'center', marginBottom: 10 },
-    label: { marginTop: 10, fontWeight: '600' },
-    pickerContainer: { backgroundColor: '#f9f9f9', borderRadius: 8, borderWidth: 1, borderColor: '#eee' },
+    cardTitle: { fontWeight: '700', textAlign: 'left', marginBottom: 8, color: '#111' },
+    label: { marginTop: 10, fontWeight: '600', color: '#374151' },
+    pickerContainer: { backgroundColor: '#f9fafb', borderRadius: 8, borderWidth: 1, borderColor: '#eef0f3' },
     picker: { height: 50 },
-    input: { backgroundColor: '#f9f9f9', borderRadius: 8, padding: 10, borderWidth: 1, borderColor: '#eee', minHeight: 60, marginTop: 5 },
+    input: { backgroundColor: '#f9fafb', borderRadius: 8, padding: 10, borderWidth: 1, borderColor: '#eef0f3', minHeight: 60, marginTop: 5 },
     photoScroll: { flexDirection: 'row', marginTop: 10 },
-    addPhotoButton: { width: 60, height: 60, backgroundColor: '#eef6ff', borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
+    addPhotoButton: { width: 60, height: 60, backgroundColor: '#eef2ff', borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginRight: 10, borderWidth: 1, borderColor: '#e2e8f0' },
     photoWrapper: { marginRight: 10 },
     miniPhoto: { width: 60, height: 60, borderRadius: 8 },
     deletePhotoIcon: { position: 'absolute', top: -5, right: -5, backgroundColor: 'red', width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-    buttonConfirmar: { marginTop: 20, padding: 15, alignItems: 'center', backgroundColor: '#007AFF', borderRadius: 8 },
+    buttonConfirmar: { marginTop: 18, padding: 14, alignItems: 'center', backgroundColor: '#007AFF', borderRadius: 10 },
     buttonConfirmarText: { color: '#fff', fontWeight: 'bold' },
-    subtitle: { fontSize: 18, fontWeight: 'bold', marginTop: 20, marginBottom: 10 },
-    historyItem: { flexDirection: 'row', backgroundColor: '#fff', padding: 10, borderRadius: 8, marginBottom: 10, alignItems: 'center' },
+    subtitle: { fontSize: 16, fontWeight: '700', marginTop: 10, marginBottom: 10, color: '#111' },
+    historyItem: { flexDirection: 'row', backgroundColor: '#fff', padding: 12, borderRadius: 10, marginBottom: 10, alignItems: 'center', borderWidth: 1, borderColor: '#eef0f3' },
     thumb: { width: 50, height: 50, borderRadius: 6, marginRight: 10 },
     historyText: { flex: 1 },
-    historyTitle: { fontWeight: 'bold' },
-    historyDesc: { fontSize: 12, color: '#555' },
-    footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 20, backgroundColor: '#fff', borderTopWidth: 1, borderColor: '#eee' },
-    buttonFinalizar: { padding: 15, alignItems: 'center', backgroundColor: '#34C759', borderRadius: 8 },
+    historyTitle: { fontWeight: '600', color: '#111' },
+    historyDesc: { fontSize: 12, color: '#6b7280' },
+    footerActions: { padding: 16, backgroundColor: '#f6f7f9', borderTopWidth: 1, borderColor: '#eef0f3' },
+    buttonSecondary: { padding: 12, alignItems: 'center', backgroundColor: '#fff', borderRadius: 10, marginBottom: 10, borderWidth: 1, borderColor: '#e5e7eb' },
+    buttonSecondaryText: { color: '#111', fontWeight: '700' },
+    buttonFinalizar: { padding: 14, alignItems: 'center', backgroundColor: '#16a34a', borderRadius: 10 },
     buttonFinalizarText: { color: '#fff', fontWeight: 'bold' },
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
     modalContent: { backgroundColor: '#fff', padding: 20, borderTopLeftRadius: 20, borderTopRightRadius: 20 },
+    photoModalContent: { backgroundColor: '#fff', padding: 20, borderRadius: 12, margin: 20 },
+    agendaModalContent: { backgroundColor: '#fff', padding: 20, borderRadius: 12, margin: 20 },
     modalTitle: { fontSize: 20, fontWeight: 'bold', textAlign: 'center', marginBottom: 20 },
+    modalHint: { fontSize: 12, color: '#6b7280', marginBottom: 6 },
+    modalInput: { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8, padding: 10, marginBottom: 12, backgroundColor: '#fff' },
     switchRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
     switchLabel: { fontSize: 16 },
     keyPhotoBox: { height: 100, backgroundColor: '#eee', alignItems: 'center', justifyContent: 'center', marginBottom: 15, borderRadius: 8 },
     modalButtons: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 20 },
     modalBtnCancel: { padding: 15, flex: 1, alignItems: 'center', backgroundColor: '#f0f0f0', marginRight: 10, borderRadius: 8 },
-    modalBtnConfirm: { padding: 15, flex: 1, alignItems: 'center', backgroundColor: '#007AFF', borderRadius: 8 }
+    modalBtnConfirm: { padding: 15, flex: 1, alignItems: 'center', backgroundColor: '#007AFF', borderRadius: 8 },
+    photoActionBtn: { padding: 14, alignItems: 'center', backgroundColor: '#007AFF', borderRadius: 8, marginBottom: 10 },
+    photoActionText: { color: '#fff', fontWeight: 'bold' },
+    photoActionCancel: { padding: 14, alignItems: 'center', backgroundColor: '#f0f0f0', borderRadius: 8 },
+    photoCancelText: { color: '#333', fontWeight: '600' }
 });

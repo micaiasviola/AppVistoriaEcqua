@@ -1,3 +1,5 @@
+import { Ionicons } from '@expo/vector-icons';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -11,36 +13,116 @@ import UnitListScreen from './src/screens/UnitListScreen';
 import InspectionTypeScreen from './src/screens/InspectionTypeScreen';
 import NewProjectScreen from './src/screens/NewProjectScreen';
 import NewUnitScreen from './src/screens/NewUnitScreen';
+import RelatoriosScreen from './src/screens/RelatoriosScreen';
+import VistoriaDetailScreen from './src/screens/VistoriaDetailScreen';
+import VistoriaListScreen from './src/screens/VistoriaListScreen';
+import VistoriasHomeScreen from './src/screens/VistoriasHomeScreen';
 
 const Stack = createNativeStackNavigator();
+const Tab = createBottomTabNavigator();
+
+function UnidadesStack() {
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerStyle: { backgroundColor: '#f2f2f7' },
+        headerTintColor: '#333',
+        headerTitleStyle: { fontWeight: 'bold' }
+      }}
+    >
+      <Stack.Screen name="Home" component={HomeScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="NewProject" component={NewProjectScreen} options={{ title: 'Novo Empreendimento' }} />
+      <Stack.Screen name="Units" component={UnitListScreen} options={{ title: 'Unidades' }} />
+      <Stack.Screen name="NewUnit" component={NewUnitScreen} options={{ title: 'Nova Unidade' }} />
+      <Stack.Screen name="InspectionType" component={InspectionTypeScreen} options={{ title: 'Tipo de Vistoria' }} />
+      <Stack.Screen name="VistoriaList" component={VistoriaListScreen} options={{ title: 'Revistorias' }} />
+      <Stack.Screen name="VistoriaDetail" component={VistoriaDetailScreen} options={{ title: 'Vistoria' }} />
+      <Stack.Screen name="Inspection" component={InspectionScreen} options={{ title: 'Vistoria', headerShown: false }} />
+    </Stack.Navigator>
+  );
+}
+
+function VistoriasStack() {
+  return (
+      <Stack.Navigator
+      screenOptions={{
+        headerStyle: { backgroundColor: '#f2f2f7' },
+        headerTintColor: '#333',
+        headerTitleStyle: { fontWeight: 'bold' }
+      }}
+    >
+      <Stack.Screen name="VistoriasHome" component={VistoriasHomeScreen} options={{ title: 'Revistorias' }} />
+      <Stack.Screen name="VistoriaList" component={VistoriaListScreen} options={{ title: 'Revistorias' }} />
+      <Stack.Screen name="VistoriaDetail" component={VistoriaDetailScreen} options={{ title: 'Vistoria' }} />
+      <Stack.Screen name="Inspection" component={InspectionScreen} options={{ title: 'Vistoria', headerShown: false }} />
+    </Stack.Navigator>
+  );
+}
+
+function RelatoriosStack() {
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerStyle: { backgroundColor: '#f2f2f7' },
+        headerTintColor: '#333',
+        headerTitleStyle: { fontWeight: 'bold' }
+      }}
+    >
+      <Stack.Screen name="Relatorios" component={RelatoriosScreen} options={{ title: 'Relatorios' }} />
+    </Stack.Navigator>
+  );
+}
 
 export default function App() {
   return (
     <SafeAreaProvider>
       <NavigationContainer>
-        <Stack.Navigator
-          initialRouteName="Home"
-          screenOptions={{
-            headerStyle: { backgroundColor: '#f2f2f7' },
-            headerTintColor: '#333',
-            headerTitleStyle: { fontWeight: 'bold' },
-          }}
+        <Tab.Navigator
+          screenOptions={({ route }) => ({
+            headerShown: false,
+            tabBarActiveTintColor: '#007AFF',
+            tabBarInactiveTintColor: '#666',
+            tabBarStyle: { backgroundColor: '#fff', borderTopColor: '#eee' },
+            tabBarIcon: ({ color, size }) => {
+              const nameMap = {
+                UnidadesTab: 'home-outline',
+                VistoriasTab: 'clipboard-outline',
+                RelatoriosTab: 'document-text-outline'
+              };
+              const iconName = nameMap[route.name] || 'ellipse-outline';
+              return <Ionicons name={iconName} size={size} color={color} />;
+            }
+          })}
         >
-          {/* MUDANÇA AQUI: headerShown: false */}
-          <Stack.Screen
-            name="Home"
-            component={HomeScreen}
-            options={{ headerShown: false }}
+          <Tab.Screen
+            name="UnidadesTab"
+            component={UnidadesStack}
+            options={{ title: 'Unidades' }}
+            listeners={({ navigation, route }) => ({
+              tabPress: (e) => {
+                // Always navigate to the Home screen of the Unidades stack
+                e.preventDefault();
+                navigation.navigate('UnidadesTab', { screen: 'Home' });
+              }
+            })}
           />
-
-          {/* Mantenha as outras telas como estão por enquanto, 
-              ou coloque headerShown: false se quiser a navbar nelas também */}
-          <Stack.Screen name="NewProject" component={NewProjectScreen} options={{ title: 'Novo Empreendimento' }} />
-          <Stack.Screen name="Units" component={UnitListScreen} options={{ title: 'Unidades' }} />
-          <Stack.Screen name="NewUnit" component={NewUnitScreen} options={{ title: 'Nova Unidade' }} />
-          <Stack.Screen name="InspectionType" component={InspectionTypeScreen} options={{ title: 'Tipo de Vistoria' }} />
-          <Stack.Screen name="Inspection" component={InspectionScreen} options={{ title: 'Vistoria', headerShown: false }} />
-        </Stack.Navigator>
+          <Tab.Screen
+            name="VistoriasTab"
+            component={VistoriasStack}
+            options={{ title: 'Revistorias' }}
+            listeners={({ navigation, route }) => ({
+              tabPress: (e) => {
+                e.preventDefault();
+                navigation.navigate('VistoriasTab', { screen: 'VistoriasHome' });
+              }
+            })}
+          />
+          <Tab.Screen
+            name="RelatoriosTab"
+            component={RelatoriosStack}
+            options={{ title: 'Relatorios' }}
+          />
+        </Tab.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>
   );

@@ -108,3 +108,4 @@ create table public.vistorias (
 ) TABLESPACE pg_default;
 
 create index IF not exists idx_vistorias_unidade on public.vistorias using btree (unidade_id) TABLESPACE pg_default;
+

@@ -22,7 +22,7 @@ export default function NewProjectScreen({ navigation }) {
       Alert.alert("Erro", error.message);
     } else {
       Alert.alert("Sucesso", "Empreendimento cadastrado!");
-      navigation.goBack();
+      if (navigation.canGoBack && navigation.canGoBack()) navigation.goBack(); else navigation.navigate('UnidadesTab', { screen: 'Home' });
     }
   }
 

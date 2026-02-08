@@ -22,7 +22,7 @@ export default function NewUnitScreen({ route, navigation }) {
       Alert.alert("Erro", error.message);
     } else {
       Alert.alert("Sucesso", "Unidade salva!");
-      navigation.goBack();
+      if (navigation.canGoBack && navigation.canGoBack()) navigation.goBack(); else navigation.navigate('UnidadesTab', { screen: 'Home' });
     }
   }
 

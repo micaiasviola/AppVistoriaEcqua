@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -40,6 +41,17 @@ export default function UnitListScreen({ route, navigation }) {
 
   return (
     <View style={styles.container}>
+      <View style={styles.topActions}>
+        <TouchableOpacity
+          style={styles.homeButton}
+          onPress={() => navigation.navigate('UnidadesTab', { screen: 'Home' })}
+        >
+          <Ionicons name="home-outline" size={18} color="#111" style={styles.homeIcon} />
+          <Text style={styles.homeText}>Inicio</Text>
+        </TouchableOpacity>
+      </View>
+      <Text style={styles.header}>Unidades</Text>
+      <Text style={styles.subHeader}>Selecione uma unidade</Text>
       <FlatList
         data={unidades}
         keyExtractor={(item) => item.id}
@@ -47,14 +59,13 @@ export default function UnitListScreen({ route, navigation }) {
         renderItem={({ item }) => (
             <TouchableOpacity 
               style={styles.card}
-              // Mudança: Vai para a tela de TIPO DE VISTORIA
               onPress={() => navigation.navigate('InspectionType', { 
                 unidadeId: item.id, 
                 codigoUnidade: item.codigo 
               })}
             >
               <Text style={styles.unitCode}>Unidade {item.codigo}</Text>
-              {item.andar && <Text style={styles.floor}>{item.andar}º Andar</Text>}
+              {item.andar != null ? <Text style={styles.floor}>{item.andar}º Andar</Text> : null}
             </TouchableOpacity>
           )}
       />
@@ -63,9 +74,15 @@ export default function UnitListScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 15, backgroundColor: '#f5f5f5' },
-  card: { backgroundColor: '#fff', padding: 20, marginBottom: 10, borderRadius: 8, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 },
-  unitCode: { fontSize: 18, fontWeight: 'bold', color: '#333' },
-  floor: { color: '#666', marginTop: 4 },
-  empty: { textAlign: 'center', marginTop: 50, color: '#999' }
+  container: { flex: 1, padding: 15, backgroundColor: '#f6f7f9' },
+  topActions: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 8 },
+  homeButton: { flexDirection: 'row', alignItems: 'center', padding: 6, borderRadius: 8, backgroundColor: '#fff', borderWidth: 1, borderColor: '#eef0f3' },
+  homeIcon: { marginRight: 6 },
+  homeText: { fontSize: 12, fontWeight: '600', color: '#111' },
+  header: { fontSize: 18, fontWeight: '700', color: '#222', marginBottom: 4 },
+  subHeader: { fontSize: 13, color: '#6b7280', marginBottom: 12 },
+  card: { backgroundColor: '#fff', padding: 16, marginBottom: 10, borderRadius: 12, borderWidth: 1, borderColor: '#eef0f3' },
+  unitCode: { fontSize: 16, fontWeight: '600', color: '#111' },
+  floor: { color: '#6b7280', marginTop: 4, fontSize: 12 },
+  empty: { textAlign: 'center', marginTop: 30, color: '#999' }
 });

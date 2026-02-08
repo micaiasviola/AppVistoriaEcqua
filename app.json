@@ -9,7 +9,11 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Precisamos acessar a camera para registrar fotos da vistoria.",
+        "NSPhotoLibraryUsageDescription": "Precisamos acessar a galeria para selecionar fotos da vistoria."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -18,6 +22,7 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
+      "permissions": ["CAMERA", "READ_MEDIA_IMAGES", "READ_EXTERNAL_STORAGE"],
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },

@@ -1,6 +1,6 @@
 import { useFocusEffect } from '@react-navigation/native';
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, FlatList, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Navbar from '../components/Navbar';
 import { supabase } from '../services/supabase';
 
@@ -54,6 +54,14 @@ export default function HomeScreen({ navigation }) {
           keyExtractor={(item) => item.id}
           // Adicione um padding bottom para a lista não colar no final
           contentContainerStyle={{ paddingBottom: 20 }}
+          ListHeaderComponent={(
+            <TouchableOpacity
+              style={styles.addButton}
+              onPress={() => navigation.navigate('NewProject')}
+            >
+              <Text style={styles.addButtonText}>Novo Empreendimento</Text>
+            </TouchableOpacity>
+          )}
           renderItem={({ item }) => (
             <TouchableOpacity
               style={styles.item}
@@ -61,7 +69,7 @@ export default function HomeScreen({ navigation }) {
             >
               <Text style={styles.title}>{item.nome}</Text>
               <Text style={styles.subtitle}>{item.endereco}</Text>
-              {item.cliente && <Text style={styles.client}>Cliente: {item.cliente}</Text>}
+              {item.cliente ? <Text style={styles.client}>Cliente: {item.cliente}</Text> : null}
             </TouchableOpacity>
           )}
         />
@@ -72,6 +80,15 @@ export default function HomeScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f5f5' }, // Mudei para um cinza bem claro para destacar a navbar branca
+  addButton: {
+    marginHorizontal: 15,
+    marginBottom: 15,
+    paddingVertical: 12,
+    alignItems: 'center',
+    backgroundColor: '#007AFF',
+    borderRadius: 8,
+  },
+  addButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
   item: {
     padding: 20,
     borderBottomWidth: 1,
@@ -83,7 +100,8 @@ const styles = StyleSheet.create({
     shadowColor: "#000",
     shadowOpacity: 0.05,
     shadowRadius: 2,
-    elevation: 2
+    elevation: 2,
+    ...(Platform.OS === 'web' ? { boxShadow: '0px 2px 2px rgba(0,0,0,0.05)' } : {}),
   },
   title: { fontSize: 18, fontWeight: 'bold', color: '#333' },
   subtitle: { color: '#666', marginTop: 4 },
