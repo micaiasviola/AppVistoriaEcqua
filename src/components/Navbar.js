@@ -35,12 +35,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
     // Sombra para dar destaque (compatível com web via boxShadow)
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3.84,
-    elevation: 5,
-    ...(Platform.OS === 'web' ? { boxShadow: '0px 2px 3.84px rgba(0,0,0,0.1)' } : {}),
+    ...(Platform.OS === 'web'
+      ? { boxShadow: '0px 2px 3.84px rgba(0,0,0,0.1)' }
+      : { elevation: 5 }),
   },
   content: {
     flexDirection: 'row', // Horizontal

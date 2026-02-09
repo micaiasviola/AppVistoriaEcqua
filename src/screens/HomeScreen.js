@@ -1,7 +1,8 @@
 import { useFocusEffect } from '@react-navigation/native';
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, FlatList, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import Navbar from '../components/Navbar';
+import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import HeaderContextual from '../../components/HeaderContextual';
 import { supabase } from '../services/supabase';
 
 export default function HomeScreen({ navigation }) {
@@ -41,40 +42,41 @@ export default function HomeScreen({ navigation }) {
   if (loading) return <ActivityIndicator size="large" style={{ flex: 1 }} />;
 
   return (
-    <View style={styles.container}>
-      {/* ADICIONE A NAVBAR AQUI */}
-      <Navbar />
-
-      {/* Ajuste o paddingTop para compensar a Navbar sobreposta */}
-      <View style={{ paddingTop: 110, flex: 1 }}>
-
-        {/* Aqui começa o conteúdo da sua lista */}
-        <FlatList
-          data={empreendimentos}
-          keyExtractor={(item) => item.id}
-          // Adicione um padding bottom para a lista não colar no final
-          contentContainerStyle={{ paddingBottom: 20 }}
-          ListHeaderComponent={(
-            <TouchableOpacity
-              style={styles.addButton}
-              onPress={() => navigation.navigate('NewProject')}
-            >
-              <Text style={styles.addButtonText}>Novo Empreendimento</Text>
-            </TouchableOpacity>
-          )}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={styles.item}
-              onPress={() => navigation.navigate('Units', { empreendimentoId: item.id })}
-            >
-              <Text style={styles.title}>{item.nome}</Text>
-              <Text style={styles.subtitle}>{item.endereco}</Text>
-              {item.cliente ? <Text style={styles.client}>Cliente: {item.cliente}</Text> : null}
-            </TouchableOpacity>
-          )}
-        />
-      </View>
-    </View>
+    <SafeAreaView style={styles.container}>
+      <HeaderContextual
+        title="Empreendimentos"
+        empreendimento={null}
+        cliente={null}
+        unidade={null}
+      />
+      <FlatList
+        data={empreendimentos}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={{ padding: 16, paddingBottom: 20 }}
+        ListHeaderComponent={
+          <TouchableOpacity
+            style={styles.addButton}
+            onPress={() => navigation.navigate('NewProject')}
+          >
+            <Text style={styles.addButtonText}>Novo Empreendimento</Text>
+          </TouchableOpacity>
+        }
+        renderItem={({ item }) => (
+          <TouchableOpacity
+            style={styles.item}
+            onPress={() => navigation.navigate('Units', {
+              empreendimentoId: item.id,
+              empreendimentoNome: item.nome,
+              clienteNome: item.cliente || null
+            })}
+          >
+            <Text style={styles.title}>{item.nome}</Text>
+            <Text style={styles.subtitle}>{item.endereco}</Text>
+            {item.cliente ? <Text style={styles.client}>Cliente: {item.cliente}</Text> : null}
+          </TouchableOpacity>
+        )}
+      />
+    </SafeAreaView>
   );
 }
 
@@ -90,20 +92,17 @@ const styles = StyleSheet.create({
   },
   addButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
   item: {
-    padding: 20,
-    borderBottomWidth: 1,
-    borderColor: '#eee',
-    backgroundColor: '#fff', // Item branco
-    marginHorizontal: 15, // Margem lateral
-    marginBottom: 10, // Espaço entre itens
-    borderRadius: 8, // Bordas arredondadas
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
     shadowRadius: 2,
     elevation: 2,
-    ...(Platform.OS === 'web' ? { boxShadow: '0px 2px 2px rgba(0,0,0,0.05)' } : {}),
   },
-  title: { fontSize: 18, fontWeight: 'bold', color: '#333' },
-  subtitle: { color: '#666', marginTop: 4 },
-  client: { color: '#007AFF', fontSize: 12, marginTop: 6, fontWeight: '600' }
+  title: { fontSize: 16, fontWeight: 'bold', color: '#222' },
+  subtitle: { fontSize: 13, color: '#666', marginTop: 2 },
+  client: { fontSize: 12, color: '#007AFF', marginTop: 4 },
 });

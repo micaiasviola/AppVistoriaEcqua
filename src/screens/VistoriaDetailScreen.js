@@ -303,9 +303,21 @@ export default function VistoriaDetailScreen({ route, navigation }) {
         </TouchableOpacity>
       </View>
       <View style={styles.headerRow}>
-        <Text style={styles.headerTitle}>Vistoria</Text>
+        <Text style={styles.headerTitle}>{(() => {
+          if (tipoVistoria === 'construtora') return 'Vistoria Construtora';
+          if (tipoVistoria === 'entrada') return 'Vistoria de Entrada';
+          if (tipoVistoria === 'revistoria') return 'Revistoria';
+          if (tipoVistoria === 'entrega') return 'Vistoria de Entrega';
+          return 'Vistoria';
+        })()}</Text>
       </View>
-      <Text style={styles.subHeader}>Unidade {codigoUnidade} • {tipoVistoria}</Text>
+      <Text style={styles.subHeader}>Unidade {codigoUnidade} • {(() => {
+        if (tipoVistoria === 'construtora') return 'Construtora';
+        if (tipoVistoria === 'entrada') return 'Entrada';
+        if (tipoVistoria === 'revistoria') return 'Revistoria';
+        if (tipoVistoria === 'entrega') return 'Entrega';
+        return tipoVistoria;
+      })()}</Text>
 
       <View style={styles.actionsRow}>
         <TouchableOpacity

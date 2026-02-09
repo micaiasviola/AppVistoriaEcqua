@@ -1,11 +1,12 @@
-import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import HeaderContextual from '../../components/HeaderContextual';
 import { supabase } from '../services/supabase';
 
 export default function UnitListScreen({ route, navigation }) {
-  const { empreendimentoId } = route.params;
+  // Espera-se que route.params contenha dados do empreendimento e cliente
+  const { empreendimentoId, empreendimentoNome, clienteNome } = route.params;
   const [unidades, setUnidades] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -16,6 +17,14 @@ export default function UnitListScreen({ route, navigation }) {
           <Text style={{ fontSize: 28, color: '#007AFF', marginRight: 10 }}>+</Text>
         </TouchableOpacity>
       ),
+      headerLeft: () => (
+        <TouchableOpacity onPress={() => {
+          // Sempre volta para a tela de empreendimento (HomeScreen)
+          navigation.navigate('Home');
+        }}>
+          <Text style={{ fontSize: 18, color: '#007AFF', marginLeft: 10 }}>Voltar</Text>
+        </TouchableOpacity>
+      )
     });
   }, [navigation]);
 
@@ -26,6 +35,12 @@ export default function UnitListScreen({ route, navigation }) {
   );
 
   async function fetchUnidades() {
+    if (!empreendimentoId || empreendimentoId === 'undefined') {
+      Alert.alert('Erro de navegação', 'Informação do empreendimento não encontrada. Retornando à tela inicial.');
+      navigation.navigate('UnidadesTab', { screen: 'Home' });
+      setLoading(false);
+      return;
+    }
     const { data, error } = await supabase
       .from('unidades')
       .select('*')
@@ -41,33 +56,43 @@ export default function UnitListScreen({ route, navigation }) {
 
   return (
     <View style={styles.container}>
-      <View style={styles.topActions}>
-        <TouchableOpacity
-          style={styles.homeButton}
-          onPress={() => navigation.navigate('UnidadesTab', { screen: 'Home' })}
-        >
-          <Ionicons name="home-outline" size={18} color="#111" style={styles.homeIcon} />
-          <Text style={styles.homeText}>Inicio</Text>
-        </TouchableOpacity>
-      </View>
-      <Text style={styles.header}>Unidades</Text>
-      <Text style={styles.subHeader}>Selecione uma unidade</Text>
+      <HeaderContextual
+        title="Unidades"
+        empreendimento={empreendimentoNome || null}
+        cliente={clienteNome || null}
+        unidade={null}
+        rightContent={
+          <View style={styles.logoBox}>
+            <Image
+              source={require('../../assets/images/logo.png')}
+              style={styles.logo}
+              resizeMode="contain"
+            />
+          </View>
+        }
+      />
       <FlatList
         data={unidades}
         keyExtractor={(item) => item.id}
+        ListHeaderComponent={
+          <Text style={styles.subHeader}>Selecione uma unidade</Text>
+        }
         ListEmptyComponent={<Text style={styles.empty}>Nenhuma unidade cadastrada.</Text>}
         renderItem={({ item }) => (
-            <TouchableOpacity 
-              style={styles.card}
-              onPress={() => navigation.navigate('InspectionType', { 
-                unidadeId: item.id, 
-                codigoUnidade: item.codigo 
-              })}
-            >
-              <Text style={styles.unitCode}>Unidade {item.codigo}</Text>
-              {item.andar != null ? <Text style={styles.floor}>{item.andar}º Andar</Text> : null}
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity
+            style={styles.card}
+            onPress={() => navigation.navigate('InspectionType', {
+              unidadeId: item.id,
+              codigoUnidade: item.codigo,
+              empreendimentoId,
+              empreendimentoNome,
+              clienteNome
+            })}
+          >
+            <Text style={styles.unitCode}>Unidade {item.codigo}</Text>
+            {item.andar != null ? <Text style={styles.floor}>{item.andar}º Andar</Text> : null}
+          </TouchableOpacity>
+        )}
       />
     </View>
   );
@@ -75,6 +100,8 @@ export default function UnitListScreen({ route, navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 15, backgroundColor: '#f6f7f9' },
+  logoBox: { justifyContent: 'center', alignItems: 'flex-end', height: 40, width: 50 },
+  logo: { width: 40, height: 40 },
   topActions: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 8 },
   homeButton: { flexDirection: 'row', alignItems: 'center', padding: 6, borderRadius: 8, backgroundColor: '#fff', borderWidth: 1, borderColor: '#eef0f3' },
   homeIcon: { marginRight: 6 },

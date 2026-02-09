@@ -3,6 +3,8 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import HeaderContextual from '../../components/HeaderContextual';
 import { supabase } from '../services/supabase';
 
 const TITULOS = {
@@ -107,19 +109,13 @@ export default function VistoriaListScreen({ route, navigation }) {
   if (loading) return <ActivityIndicator size="large" style={{ flex: 1 }} />;
 
   return (
-    <View style={styles.container}>
-      <View style={styles.topActions}>
-        <TouchableOpacity
-          style={styles.homeButton}
-          onPress={() => navigation.navigate('UnidadesTab', { screen: 'Home' })}
-        >
-          <Ionicons name="home-outline" size={18} color="#111" style={styles.homeIcon} />
-          <Text style={styles.homeText}>Inicio</Text>
-        </TouchableOpacity>
-      </View>
-      <Text style={styles.header}>{titulo}</Text>
-      <Text style={styles.subHeader}>Unidade {codigoUnidade} • {tipoVistoria}</Text>
-
+    <SafeAreaView style={styles.container}>
+      <HeaderContextual
+        title={titulo}
+        empreendimento={route.params.empreendimentoNome || null}
+        cliente={route.params.clienteNome || null}
+        unidade={codigoUnidade || null}
+      />
       <TouchableOpacity
         style={styles.primaryBtn}
         onPress={() => navigation.navigate('Inspection', {
@@ -131,10 +127,10 @@ export default function VistoriaListScreen({ route, navigation }) {
       >
         <Text style={styles.primaryBtnText}>Iniciar Vistoria</Text>
       </TouchableOpacity>
-
       <FlatList
         data={vistorias}
         keyExtractor={(item) => item.id}
+        ListHeaderComponent={<Text style={styles.subHeader}>Unidade {codigoUnidade} • {tipoVistoria}</Text>}
         ListEmptyComponent={<Text style={styles.empty}>Nenhuma vistoria encontrada.</Text>}
         renderItem={({ item }) => (
           <View style={styles.card}>
@@ -205,7 +201,7 @@ export default function VistoriaListScreen({ route, navigation }) {
           </View>
         </View>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
 

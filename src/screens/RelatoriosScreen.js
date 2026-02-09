@@ -1,11 +1,21 @@
 import { StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import HeaderContextual from '../../components/HeaderContextual';
 
 export default function RelatoriosScreen() {
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Relatorios</Text>
-      <Text style={styles.subtitle}>Em breve</Text>
-    </View>
+    <SafeAreaView style={styles.container}>
+      <HeaderContextual
+        title="Relatórios"
+        empreendimento={null}
+        cliente={null}
+        unidade={null}
+      />
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={styles.title}>Relatórios</Text>
+        <Text style={styles.subtitle}>Em breve</Text>
+      </View>
+    </SafeAreaView>
   );
 }
 

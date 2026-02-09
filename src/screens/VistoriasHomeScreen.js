@@ -1,6 +1,8 @@
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import HeaderContextual from '../../components/HeaderContextual';
 import { supabase } from '../services/supabase';
 
 export default function VistoriasHomeScreen({ navigation }) {
@@ -59,47 +61,51 @@ export default function VistoriasHomeScreen({ navigation }) {
   if (loading) return <ActivityIndicator size="large" style={{ flex: 1 }} />;
 
   return (
-    <View style={styles.container}>
-      <View style={styles.headerRow}>
-        <Text style={styles.header}>Revistorias</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Text style={{ marginRight: 8, color: '#6b7280' }}>{showOnlyAgendadas ? 'Somente agendadas' : 'Todas'}</Text>
-          <Switch value={showOnlyAgendadas} onValueChange={(v) => setShowOnlyAgendadas(v)} />
-        </View>
-      </View>
-      <Text style={styles.subHeader}>Lista de revistorias</Text>
-
+    <SafeAreaView style={styles.container}>
+      <HeaderContextual
+        title="Revistorias"
+        empreendimento={null}
+        cliente={null}
+        unidade={null}
+        rightContent={
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={{ marginRight: 8, color: '#6b7280' }}>{showOnlyAgendadas ? 'Somente agendadas' : 'Todas'}</Text>
+            <Switch value={showOnlyAgendadas} onValueChange={(v) => setShowOnlyAgendadas(v)} />
+          </View>
+        }
+      />
       <FlatList
-            data={revistorias}
-            keyExtractor={(item) => item.id}
-            ListEmptyComponent={<Text style={styles.empty}>Nenhuma revistoria encontrada.</Text>}
-            renderItem={({ item }) => {
-              const when = item.data_agendada || item.data_vistoria || item.created_at;
-              const upcoming = (() => {
-                if (!when) return false;
-                const dt = new Date(when);
-                const now = new Date();
-                const diffMs = dt - now;
-                const diffDays = diffMs / (1000 * 60 * 60 * 24);
-                return diffDays >= 0 && diffDays <= 3;
-              })();
-              return (
-                <TouchableOpacity style={[styles.card, upcoming ? styles.upcomingCard : null]} onPress={() => abrirDetalhe(item)}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <View>
-                      <Text style={[styles.unitTitle, upcoming ? { color: '#b91c1c' } : null]}>Unidade {item.unidades?.codigo} {item.revisao_num ? `• Rev ${item.revisao_num}` : ''}</Text>
-                      <Text style={styles.unitSub}>{item.unidades?.empreendimentos?.cliente || item.unidades?.empreendimentos?.nome || 'Cliente'}</Text>
-                      <Text style={styles.unitSub}>{formatDateTime(when)}</Text>
-                    </View>
-                    <View style={styles.statusBox}>
-                      <Text style={[styles.statusText, item.status === 'agendada' ? styles.statusAgendada : styles.statusOther]}>{item.status?.toUpperCase()}</Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              );
-            }}
-          />
-    </View>
+        data={revistorias}
+        keyExtractor={(item) => item.id}
+        ListHeaderComponent={<Text style={styles.subHeader}>Lista de revistorias</Text>}
+        ListEmptyComponent={<Text style={styles.empty}>Nenhuma revistoria encontrada.</Text>}
+        renderItem={({ item }) => {
+          const when = item.data_agendada || item.data_vistoria || item.created_at;
+          const upcoming = (() => {
+            if (!when) return false;
+            const dt = new Date(when);
+            const now = new Date();
+            const diffMs = dt - now;
+            const diffDays = diffMs / (1000 * 60 * 60 * 24);
+            return diffDays >= 0 && diffDays <= 3;
+          })();
+          return (
+            <TouchableOpacity style={[styles.card, upcoming ? styles.upcomingCard : null]} onPress={() => abrirDetalhe(item)}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <View>
+                  <Text style={[styles.unitTitle, upcoming ? { color: '#b91c1c' } : null]}>Unidade {item.unidades?.codigo} {item.revisao_num ? `• Rev ${item.revisao_num}` : ''}</Text>
+                  <Text style={styles.unitSub}>{item.unidades?.empreendimentos?.cliente || item.unidades?.empreendimentos?.nome || 'Cliente'}</Text>
+                  <Text style={styles.unitSub}>{formatDateTime(when)}</Text>
+                </View>
+                <View style={styles.statusBox}>
+                  <Text style={[styles.statusText, item.status === 'agendada' ? styles.statusAgendada : styles.statusOther]}>{item.status?.toUpperCase()}</Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+          );
+        }}
+      />
+    </SafeAreaView>
   );
 }
 
