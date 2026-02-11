@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { CommonActions } from '@react-navigation/native';
+// CommonActions removed: using navigation.navigate to preserve history
 import * as FileSystem from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useState } from 'react';
@@ -128,18 +128,10 @@ export default function InspectionScreen({ route, navigation }) {
         return null;
     }
 
-    // Função global para resetar para a lista de vistorias
+    // Função global para voltar à lista de vistorias (preserva histórico)
     const resetToList = () => {
         if (!algumParametroFaltando) {
-            navigation.dispatch(
-                CommonActions.reset({
-                    index: 0,
-                    routes: [{
-                        name: 'VistoriaList',
-                        params: { unidadeId, codigoUnidade, modoConstrutora: !!modoConstrutora, tipoVistoria: vistoriaTipo }
-                    }]
-                })
-            );
+            navigation.navigate('VistoriaList', { unidadeId, codigoUnidade, modoConstrutora: !!modoConstrutora, tipoVistoria: vistoriaTipo });
         } else {
             Alert.alert('Erro de navegação', 'Informações da unidade não encontradas. Retornando à tela inicial.');
             navigation.navigate('UnidadesTab', { screen: 'Home' });
@@ -892,15 +884,7 @@ export default function InspectionScreen({ route, navigation }) {
 
         setAgendaVisible(false);
         setAgendaData('');
-        navigation.dispatch(
-            CommonActions.reset({
-                index: 0,
-                routes: [{
-                    name: 'VistoriaList',
-                    params: { unidadeId, codigoUnidade, modoConstrutora: false, tipoVistoria: 'revistoria' }
-                }]
-            })
-        );
+        navigation.navigate('VistoriaList', { unidadeId, codigoUnidade, modoConstrutora: false, tipoVistoria: 'revistoria' });
     };
 
     const handleBotaoFinalizar = () => {
@@ -1014,15 +998,7 @@ export default function InspectionScreen({ route, navigation }) {
                             if (navigation.canGoBack && navigation.canGoBack()) {
                                 navigation.goBack();
                             } else if (unidadeId && codigoUnidade) {
-                                navigation.dispatch(
-                                    CommonActions.reset({
-                                        index: 0,
-                                        routes: [{
-                                            name: 'VistoriaList',
-                                            params: { unidadeId, codigoUnidade, modoConstrutora: !!modoConstrutora, tipoVistoria: vistoriaTipo }
-                                        }]
-                                    })
-                                );
+                                navigation.navigate('VistoriaList', { unidadeId, codigoUnidade, modoConstrutora: !!modoConstrutora, tipoVistoria: vistoriaTipo });
                             } else {
                                 navigation.navigate('UnidadesTab', { screen: 'Home' });
                             }

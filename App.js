@@ -27,7 +27,8 @@ function UnidadesStack() {
       screenOptions={{
         headerStyle: { backgroundColor: '#f2f2f7' },
         headerTintColor: '#333',
-        headerTitleStyle: { fontWeight: 'bold' }
+        headerTitleStyle: { fontWeight: 'bold' },
+        headerBackTitleVisible: false
       }}
     >
       <Stack.Screen name="Home" component={HomeScreen} options={{ headerShown: false }} />
@@ -35,7 +36,15 @@ function UnidadesStack() {
       <Stack.Screen name="Units" component={UnitListScreen} options={{ title: 'Unidades' }} />
       <Stack.Screen name="NewUnit" component={NewUnitScreen} options={{ title: 'Nova Unidade' }} />
       <Stack.Screen name="InspectionType" component={InspectionTypeScreen} options={{ title: 'Tipo de Vistoria' }} />
-      <Stack.Screen name="VistoriaList" component={VistoriaListScreen} options={{ title: 'Revistorias' }} />
+      <Stack.Screen name="VistoriaList" component={VistoriaListScreen} options={({ route }) => {
+        const tipo = route?.params?.tipoVistoria;
+        let title = 'Vistorias';
+        if (tipo === 'construtora') title = 'Vistoria Construtora';
+        else if (tipo === 'entrada') title = 'Vistoria de Entrada';
+        else if (tipo === 'revistoria') title = 'Revistoria';
+        else if (tipo === 'entrega') title = 'Vistoria de Entrega';
+        return { title };
+      }} />
       <Stack.Screen name="VistoriaDetail" component={VistoriaDetailScreen} options={{ title: 'Vistoria' }} />
       <Stack.Screen name="Inspection" component={InspectionScreen} options={{ title: 'Vistoria', headerShown: false }} />
     </Stack.Navigator>
@@ -52,7 +61,15 @@ function VistoriasStack() {
       }}
     >
       <Stack.Screen name="VistoriasHome" component={VistoriasHomeScreen} options={{ title: 'Revistorias' }} />
-      <Stack.Screen name="VistoriaList" component={VistoriaListScreen} options={{ title: 'Revistorias' }} />
+      <Stack.Screen name="VistoriaList" component={VistoriaListScreen} options={({ route }) => {
+        const tipo = route?.params?.tipoVistoria;
+        let title = 'Vistorias';
+        if (tipo === 'construtora') title = 'Vistoria Construtora';
+        else if (tipo === 'entrada') title = 'Vistoria de Entrada';
+        else if (tipo === 'revistoria') title = 'Revistoria';
+        else if (tipo === 'entrega') title = 'Vistoria de Entrega';
+        return { title };
+      }} />
       <Stack.Screen name="VistoriaDetail" component={VistoriaDetailScreen} options={{ title: 'Vistoria' }} />
       <Stack.Screen name="Inspection" component={InspectionScreen} options={{ title: 'Vistoria', headerShown: false }} />
     </Stack.Navigator>
@@ -65,7 +82,8 @@ function RelatoriosStack() {
       screenOptions={{
         headerStyle: { backgroundColor: '#f2f2f7' },
         headerTintColor: '#333',
-        headerTitleStyle: { fontWeight: 'bold' }
+        headerTitleStyle: { fontWeight: 'bold' },
+        headerBackTitleVisible: false
       }}
     >
       <Stack.Screen name="Relatorios" component={RelatoriosScreen} options={{ title: 'Relatorios' }} />

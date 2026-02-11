@@ -28,6 +28,15 @@ export default function NewUnitScreen({ route, navigation }) {
 
   return (
     <View style={styles.container}>
+      <TouchableOpacity
+        style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}
+        onPress={() => {
+          if (navigation.canGoBack && navigation.canGoBack()) navigation.goBack();
+          else navigation.navigate('UnidadesTab', { screen: 'Home' });
+        }}
+      >
+        <Text style={{ color: '#007AFF', fontSize: 18 }}>← Voltar</Text>
+      </TouchableOpacity>
       <Text style={styles.label}>Número da Unidade</Text>
       <TextInput style={styles.input} value={codigo} onChangeText={setCodigo} placeholder="Ex: 1501" keyboardType="default" />
 

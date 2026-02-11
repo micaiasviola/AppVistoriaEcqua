@@ -28,6 +28,15 @@ export default function NewProjectScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
+      <TouchableOpacity
+        style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}
+        onPress={() => {
+          if (navigation.canGoBack && navigation.canGoBack()) navigation.goBack();
+          else navigation.navigate('UnidadesTab', { screen: 'Home' });
+        }}
+      >
+        <Text style={{ color: '#007AFF', fontSize: 18 }}>← Voltar</Text>
+      </TouchableOpacity>
       <Text style={styles.label}>Nome da Obra</Text>
       <TextInput style={styles.input} value={nome} onChangeText={setNome} placeholder="Ex: Sky Pinheiros" />
 

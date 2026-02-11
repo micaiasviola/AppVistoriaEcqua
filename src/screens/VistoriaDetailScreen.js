@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { CommonActions, useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Asset } from 'expo-asset';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -13,6 +13,12 @@ const ordenarApontamentos = (lista) => [...(lista || [])].sort((a, b) => {
 });
 
 export default function VistoriaDetailScreen({ route, navigation }) {
+    // ...existing code...
+    // Botão de voltar visual
+    const handleVoltar = () => {
+      if (navigation.canGoBack && navigation.canGoBack()) navigation.goBack();
+      else navigation.navigate('UnidadesTab', { screen: 'Home' });
+    };
   const { vistoriaId, unidadeId, codigoUnidade, modoConstrutora, tipoVistoria } = route.params;
   const [loading, setLoading] = useState(true);
   const [apontamentos, setApontamentos] = useState([]);
@@ -272,21 +278,13 @@ export default function VistoriaDetailScreen({ route, navigation }) {
 
     setAgendaVisible(false);
     setAgendaData('');
-    navigation.dispatch(
-      CommonActions.reset({
-        index: 0,
-        routes: [{
-          name: 'Inspection',
-          params: {
-            unidadeId,
-            codigoUnidade,
-            vistoriaId: nova.id,
-            modoConstrutora: false,
-            tipoVistoria: 'revistoria'
-          }
-        }]
-      })
-    );
+    navigation.navigate('Inspection', {
+      unidadeId,
+      codigoUnidade,
+      vistoriaId: nova.id,
+      modoConstrutora: false,
+      tipoVistoria: 'revistoria'
+    });
   };
 
   if (loading) return <ActivityIndicator size="large" style={{ flex: 1 }} />;
@@ -322,21 +320,13 @@ export default function VistoriaDetailScreen({ route, navigation }) {
       <View style={styles.actionsRow}>
         <TouchableOpacity
           style={styles.actionBtn}
-          onPress={() => navigation.dispatch(
-            CommonActions.reset({
-              index: 0,
-              routes: [{
-                name: 'Inspection',
-                params: {
-                  unidadeId,
-                  codigoUnidade,
-                  vistoriaId,
-                  modoConstrutora: !!modoConstrutora,
-                  tipoVistoria
-                }
-              }]
-            })
-          )}
+          onPress={() => navigation.navigate('Inspection', {
+            unidadeId,
+            codigoUnidade,
+            vistoriaId,
+            modoConstrutora: !!modoConstrutora,
+            tipoVistoria
+          })}
         >
           <Text style={styles.actionText}>Editar Apontamentos</Text>
         </TouchableOpacity>
