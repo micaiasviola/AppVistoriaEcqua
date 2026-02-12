@@ -44,7 +44,7 @@ export default function VistoriaListScreen({ route, navigation }) {
     setLoading(true);
     const { data, error } = await supabase
       .from('vistorias')
-      .select('id, tipo_vistoria, revisao_num, data_vistoria, created_at, status')
+      .select('id, tipo_vistoria, revisao_num, data_vistoria, created_at, status, status_aprovacao')
       .eq('unidade_id', unidadeId)
       .eq('tipo_vistoria', tipoVistoria)
       .order('created_at', { ascending: false });
@@ -56,15 +56,53 @@ export default function VistoriaListScreen({ route, navigation }) {
       setLoading(false);
       return;
     }
-    setVistorias(data || []);
+    let list = data || [];
+    // Para vistorias reprovadas (construtora), buscar se já existe revistoria agendada
+    try {
+      const enhanced = await Promise.all(list.map(async (v) => {
+        if (tipoVistoria === 'construtora' && v.status_aprovacao === 'reprovado') {
+          try {
+            const { data: rev, error: revErr } = await supabase
+              .from('vistorias')
+              .select('id, data_agendada, data_vistoria, status')
+              .eq('vistoria_pai_id', v.id)
+              .eq('tipo_vistoria', 'revistoria')
+              .eq('status', 'agendada')
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            if (rev && !revErr) {
+              return { ...v, scheduledRevistoria: rev };
+            }
+          } catch (e) {
+            console.error('Erro buscando revistoria agendada:', e);
+          }
+        }
+        return v;
+      }));
+      list = enhanced;
+    } catch (e) {
+      console.error('Erro enriquecendo vistorias:', e);
+    }
+
+    setVistorias(list);
     setLoading(false);
   }
 
   // Abre modal para reagendar revistoria com seleção de data
   const reagendarRevistoria = (vistoria) => {
     setSelectedForReagendar(vistoria);
-    setAgendaDateObj(new Date());
-    setAgendaData('');
+    // Prefill data se já houver revistoria agendada
+    const sched = vistoria.scheduledRevistoria;
+    if (sched && (sched.data_agendada || sched.data_vistoria)) {
+      const d = sched.data_agendada || sched.data_vistoria;
+      setAgendaData(d);
+      const parsed = new Date(`${d}T00:00:00`);
+      if (!Number.isNaN(parsed.getTime())) setAgendaDateObj(parsed);
+    } else {
+      setAgendaDateObj(new Date());
+      setAgendaData('');
+    }
     setShowDatePicker(false);
     setAgendaVisible(true);
   };
@@ -76,34 +114,139 @@ export default function VistoriaListScreen({ route, navigation }) {
       Alert.alert('Erro', 'Informe a data no formato YYYY-MM-DD.');
       return;
     }
-
-    const revisaoNum = (selectedForReagendar.revisao_num || 0) + 1;
-    const { data, error } = await supabase
-      .from('vistorias')
-      .insert({
-        unidade_id: unidadeId,
-        tipo_vistoria: 'revistoria',
-        revisao_num: revisaoNum,
-        status: 'agendada',
-        vistoria_pai_id: selectedForReagendar.id,
-        data_vistoria: dataAgendada,
-        data_agendada: dataAgendada
-      });
-
-    if (error) {
-      Alert.alert('Erro', 'Não foi possível reagendar a revistoria.');
+    // Se já existe revistoria agendada, atualiza a data; caso contrário, cria uma nova revistoria agendada
+    const scheduled = selectedForReagendar.scheduledRevistoria;
+    if (scheduled && scheduled.id) {
+      const { data, error } = await supabase
+        .from('vistorias')
+        .update({ data_vistoria: dataAgendada, data_agendada: dataAgendada })
+        .eq('id', scheduled.id);
+      if (error) {
+        Alert.alert('Erro', 'Não foi possível atualizar o agendamento.');
+      } else {
+        Alert.alert('Sucesso', 'Agendamento atualizado!');
+        setAgendaVisible(false);
+        setSelectedForReagendar(null);
+        setAgendaData('');
+        fetchVistorias();
+      }
     } else {
-      Alert.alert('Sucesso', 'Revistoria reagendada!');
-      setAgendaVisible(false);
-      setSelectedForReagendar(null);
-      setAgendaData('');
-      fetchVistorias();
+      const revisaoNum = (selectedForReagendar.revisao_num || 0) + 1;
+      const { data, error } = await supabase
+        .from('vistorias')
+        .insert({
+          unidade_id: unidadeId,
+          tipo_vistoria: 'revistoria',
+          revisao_num: revisaoNum,
+          status: 'agendada',
+          vistoria_pai_id: selectedForReagendar.id,
+          data_vistoria: dataAgendada,
+          data_agendada: dataAgendada
+        });
+
+      if (error) {
+        Alert.alert('Erro', 'Não foi possível reagendar a revistoria.');
+      } else {
+        Alert.alert('Sucesso', 'Revistoria reagendada!');
+        setAgendaVisible(false);
+        setSelectedForReagendar(null);
+        setAgendaData('');
+        fetchVistorias();
+      }
     }
   };
 
   // Função para gerar PDF (placeholder)
   const gerarPDF = (vistoria) => {
     Alert.alert('PDF', `Gerar PDF da vistoria ${vistoria.revisao_num || ''}`);
+  };
+
+  const excluirVistoria = (vistoria) => {
+    (async () => {
+      try {
+        setLoading(true);
+        // Verifica se existem revistorias filhas
+        const { data: children, error: childErr } = await supabase
+          .from('vistorias')
+          .select('id')
+          .eq('vistoria_pai_id', vistoria.id)
+          .eq('tipo_vistoria', 'revistoria');
+
+        if (childErr) {
+          console.error('Erro verificando revistorias filhas:', childErr);
+        }
+
+        const childIds = (children || []).map(c => c.id);
+
+        const confirmMsg = childIds.length > 0
+          ? 'Essa vistoria possui revistoria(s) pendentes, deseja realmente excluir? Isso excluirá a vistoria e suas revistorias.'
+          : 'Confirma exclusão da vistoria? Esta ação não pode ser desfeita.';
+
+        Alert.alert('Excluir vistoria', confirmMsg, [
+          { text: 'Cancelar', style: 'cancel', onPress: () => setLoading(false) },
+          {
+            text: 'Excluir',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                setLoading(true);
+                // Constrói lista de vistorias a remover (pai + filhos)
+                const idsToDelete = childIds.length > 0 ? [vistoria.id, ...childIds] : [vistoria.id];
+
+                // Busca itens relacionados a essas vistorias
+                const { data: itens, error: itensErr } = await supabase
+                  .from('itens_vistoria')
+                  .select('id')
+                  .in('vistoria_id', idsToDelete);
+
+                if (itensErr) console.error('Erro buscando itens para exclusao:', itensErr);
+                const itemIds = (itens || []).map(i => i.id);
+
+                // Exclui fotos vinculadas aos itens
+                if (itemIds.length > 0) {
+                  const { error: photosErr } = await supabase.from('fotos_vistoria').delete().in('item_id', itemIds);
+                  if (photosErr) console.error('Erro excluindo fotos:', photosErr);
+                }
+
+                // Exclui itens das vistorias
+                const { error: delItensErr } = await supabase.from('itens_vistoria').delete().in('vistoria_id', idsToDelete);
+                if (delItensErr) console.error('Erro excluindo itens:', delItensErr);
+
+                // Por fim, exclui as próprias vistorias (pai e filhos)
+                const { error: delVErr } = await supabase.from('vistorias').delete().in('id', idsToDelete);
+                if (delVErr) {
+                  console.error('Erro excluindo vistorias:', delVErr);
+                  Alert.alert('Erro', 'Não foi possível excluir a vistoria.');
+                } else {
+                  Alert.alert('Sucesso', 'Vistoria (e revistorias) excluídas.');
+                  fetchVistorias();
+                }
+              } catch (e) {
+                console.error('Erro durante exclusão:', e);
+                Alert.alert('Erro', 'Não foi possível excluir a vistoria.');
+              } finally {
+                setLoading(false);
+              }
+            }
+          }
+        ]);
+      } catch (e) {
+        console.error('Erro preparando exclusão:', e);
+        setLoading(false);
+        Alert.alert('Erro', 'Não foi possível processar a exclusão.');
+      }
+    })();
+  };
+
+  const editarVistoria = (vistoria) => {
+    // Navega para a tela de edição/inspeção da vistoria
+    navigation.navigate('Inspection', {
+      unidadeId,
+      codigoUnidade,
+      modoConstrutora: !!modoConstrutora,
+      tipoVistoria: vistoria.tipo_vistoria || tipoVistoria,
+      vistoriaId: vistoria.id
+    });
   };
 
   if (loading) return <ActivityIndicator size="large" style={{ flex: 1 }} />;
@@ -125,7 +268,7 @@ export default function VistoriaListScreen({ route, navigation }) {
           tipoVistoria
         })}
       >
-        <Text style={styles.primaryBtnText}>Iniciar Vistoria</Text>
+        <Text style={styles.primaryBtnText}>{tipoVistoria === 'revistoria' ? 'Iniciar nova revistoria' : 'Iniciar Vistoria'}</Text>
       </TouchableOpacity>
       <FlatList
         data={vistorias}
@@ -134,32 +277,78 @@ export default function VistoriaListScreen({ route, navigation }) {
         ListEmptyComponent={<Text style={styles.empty}>Nenhuma vistoria encontrada.</Text>}
         renderItem={({ item }) => (
           <View style={styles.card}>
-            <TouchableOpacity
-              onPress={() => navigation.navigate('VistoriaDetail', {
-                vistoriaId: item.id,
-                unidadeId,
-                codigoUnidade,
-                modoConstrutora: !!modoConstrutora,
-                tipoVistoria
-              })}
-            >
-              <Text style={styles.cardTitle}>
-                {tipoVistoria === 'revistoria'
-                  ? `Revistoria ${item.revisao_num || ''}`
-                  : titulo}
-              </Text>
-              <Text style={styles.cardSub}>Data: {formatDate(item.data_vistoria || item.created_at)}</Text>
-              <Text style={styles.cardSub}>Status: {item.status === 'concluida' ? 'Concluída' : item.status}</Text>
-            </TouchableOpacity>
-            <View style={{ flexDirection: 'row', marginTop: 8 }}>
-              {item.status !== 'concluida' && (
-                <TouchableOpacity style={{ marginRight: 16 }} onPress={() => reagendarRevistoria(item)}>
-                  <Ionicons name="refresh" size={18} color="#007AFF" />
-                  <Text style={{ fontSize: 12, color: '#007AFF' }}>Reagendar</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <TouchableOpacity style={{ flex: 1 }}
+                onPress={() => navigation.navigate('VistoriaDetail', {
+                  vistoriaId: item.id,
+                  unidadeId,
+                  codigoUnidade,
+                  modoConstrutora: !!modoConstrutora,
+                  tipoVistoria
+                })}
+              >
+                <Text style={styles.cardTitle}>
+                  {tipoVistoria === 'revistoria'
+                    ? `Revistoria ${item.revisao_num || ''}`
+                    : titulo}
+                </Text>
+                <Text style={styles.cardSub}>Data: {formatDate(item.data_vistoria || item.created_at)}</Text>
+                {
+                  (() => {
+                    let statusLabel = item.status || '';
+                    if (item.status_aprovacao === 'aprovado') {
+                      statusLabel = 'Aprovada e finalizada';
+                    } else if (item.status_aprovacao === 'reprovado') {
+                      if (item.scheduledRevistoria && (item.scheduledRevistoria.data_agendada || item.scheduledRevistoria.data_vistoria)) {
+                        statusLabel = `Revistoria agendada para ${formatDate(item.scheduledRevistoria.data_agendada || item.scheduledRevistoria.data_vistoria)}`;
+                      } else {
+                        statusLabel = 'Pendente de revistoria';
+                      }
+                    } else if (item.status === 'agendada') {
+                      statusLabel = 'Agendada';
+                    } else {
+                      statusLabel = 'Pendente';
+                    }
+                    return <Text style={styles.cardSub}>Status: {statusLabel}</Text>;
+                  })()
+                }
+              </TouchableOpacity>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 12 }}>
+                <TouchableOpacity onPress={() => editarVistoria(item)} style={{ marginLeft: 8 }} accessibilityLabel="Editar vistoria" accessibilityHint="Abrir a vistoria para edição">
+                  <Ionicons name="create-outline" size={18} color="#111" />
                 </TouchableOpacity>
-              )}
-              {item.status === 'concluida' && (
-                <TouchableOpacity onPress={() => gerarPDF(item)}>
+                <TouchableOpacity onPress={() => excluirVistoria(item)} style={{ marginLeft: 12 }} accessibilityLabel="Excluir vistoria" accessibilityHint="Excluir esta vistoria" >
+                  <Ionicons name="trash-outline" size={18} color="#c0392b" />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={{ flexDirection: 'row', marginTop: 8 }}>
+              {(() => {
+                // Ação para construtora reprovada: Agendar ou Editar se já houver revistoria
+                if (tipoVistoria === 'construtora' && item.status_aprovacao === 'reprovado') {
+                  const label = item.scheduledRevistoria ? 'Editar agendamento' : 'Agendar';
+                  return (
+                    <TouchableOpacity style={{ marginRight: 16 }} onPress={() => reagendarRevistoria(item)}>
+                      <Ionicons name="refresh" size={18} color="#007AFF" />
+                      <Text style={{ fontSize: 12, color: '#007AFF' }}>{label}</Text>
+                    </TouchableOpacity>
+                  );
+                }
+                // Para vistorias não aprovadas, permitir reagendar
+                if (item.status_aprovacao !== 'aprovado') {
+                  return (
+                    <TouchableOpacity style={{ marginRight: 16 }} onPress={() => reagendarRevistoria(item)}>
+                      <Ionicons name="refresh" size={18} color="#007AFF" />
+                      <Text style={{ fontSize: 12, color: '#007AFF' }}>Reagendar</Text>
+                    </TouchableOpacity>
+                  );
+                }
+                return null;
+              })()}
+              {item.status_aprovacao === 'aprovado' && (
+                <TouchableOpacity onPress={() => gerarPDF(item)} style={{ marginRight: 12 }}>
                   <Ionicons name="document-text-outline" size={18} color="#007AFF" />
                   <Text style={{ fontSize: 12, color: '#007AFF' }}>PDF</Text>
                 </TouchableOpacity>
@@ -170,11 +359,11 @@ export default function VistoriaListScreen({ route, navigation }) {
       />
       {/* MODAL AGENDAR REVISTORIA */}
       <Modal animationType="fade" transparent={true} visible={agendaVisible} onRequestClose={() => setAgendaVisible(false)}>
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
-          <View style={{ backgroundColor: '#fff', padding: 20, borderRadius: 12, margin: 20 }}>
-            <Text style={{ fontSize: 18, fontWeight: '700', textAlign: 'center', marginBottom: 10 }}>Agendar Revistoria</Text>
-            <Text style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Escolha a data</Text>
-            <TouchableOpacity onPress={() => setShowDatePicker(true)} style={{ borderWidth:1, borderColor:'#e5e7eb', borderRadius:8, padding:10, marginBottom:12, backgroundColor:'#fff' }}>
+            <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+          <View style={[styles.modalContent, { margin: 20 }] }>
+            <Text style={styles.modalTitle}>Agendar Revistoria</Text>
+            <Text style={styles.modalHint}>Escolha a data</Text>
+            <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.modalInput}>
               <Text>{agendaData ? agendaData : 'Selecionar data'}</Text>
             </TouchableOpacity>
             {showDatePicker && (
@@ -194,9 +383,11 @@ export default function VistoriaListScreen({ route, navigation }) {
                 }}
               />
             )}
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 20 }}>
-              <TouchableOpacity onPress={() => setAgendaVisible(false)} style={{ padding: 12, flex:1, marginRight:8, backgroundColor:'#f0f0f0', borderRadius:8, alignItems:'center' }}><Text>Voltar</Text></TouchableOpacity>
-              <TouchableOpacity onPress={confirmarReagendar} style={{ padding: 12, flex:1, backgroundColor:'#007AFF', borderRadius:8, alignItems:'center' }}><Text style={{color:'#fff'}}>AGENDAR</Text></TouchableOpacity>
+            <View style={styles.modalActions}>
+              <TouchableOpacity onPress={() => setAgendaVisible(false)} style={styles.modalCancel}><Text style={styles.modalCancelText}>Voltar</Text></TouchableOpacity>
+              <TouchableOpacity onPress={confirmarReagendar} style={styles.modalConfirm}>
+                <Text style={styles.modalConfirmText}>{selectedForReagendar && selectedForReagendar.scheduledRevistoria ? 'ATUALIZAR' : 'AGENDAR'}</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </View>
@@ -219,4 +410,14 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 15, fontWeight: '600', color: '#111' },
   cardSub: { color: '#6b7280', marginTop: 4, fontSize: 12 },
   empty: { textAlign: 'center', marginTop: 30, color: '#999' }
+  ,
+  modalInput: { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8, padding: 10, marginBottom: 12 },
+  modalActions: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: 12 },
+  modalCancel: { paddingVertical: 10, paddingHorizontal: 12, marginRight: 8, flex: 1, backgroundColor: '#f0f0f0', borderRadius: 8, alignItems: 'center' },
+  modalCancelText: { color: '#111', fontWeight: '600' },
+  modalConfirm: { paddingVertical: 10, paddingHorizontal: 12, flex: 1, backgroundColor: '#007AFF', borderRadius: 8, alignItems: 'center' },
+  modalConfirmText: { color: '#fff', fontWeight: '700' },
+  modalContent: { backgroundColor: '#fff', padding: 20, borderRadius: 12 },
+  modalTitle: { fontSize: 18, fontWeight: '700', textAlign: 'center', marginBottom: 10 },
+  modalHint: { fontSize: 12, color: '#6b7280', marginBottom: 6 }
 });

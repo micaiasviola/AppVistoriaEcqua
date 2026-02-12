@@ -79,19 +79,25 @@ export default function UnitListScreen({ route, navigation }) {
         }
         ListEmptyComponent={<Text style={styles.empty}>Nenhuma unidade cadastrada.</Text>}
         renderItem={({ item }) => (
-          <TouchableOpacity
-            style={styles.card}
-            onPress={() => navigation.navigate('InspectionType', {
-              unidadeId: item.id,
-              codigoUnidade: item.codigo,
-              empreendimentoId,
-              empreendimentoNome,
-              clienteNome
-            })}
-          >
-            <Text style={styles.unitCode}>Unidade {item.codigo}</Text>
-            {item.andar != null ? <Text style={styles.floor}>{item.andar}º Andar</Text> : null}
-          </TouchableOpacity>
+          <View style={styles.card}>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('InspectionType', {
+                unidadeId: item.id,
+                codigoUnidade: item.codigo,
+                empreendimentoId,
+                empreendimentoNome,
+                clienteNome
+              })}
+            >
+              <Text style={styles.unitCode}>Unidade {item.codigo}</Text>
+              {item.andar != null ? <Text style={styles.floor}>{item.andar}º Andar</Text> : null}
+            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 8 }}>
+              <TouchableOpacity onPress={() => navigation.navigate('NewUnit', { empreendimentoId, unitId: item.id, codigo: item.codigo, andar: item.andar })}>
+                <Text style={{ color: '#007AFF', fontSize: 13 }}>Editar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         )}
       />
     </View>

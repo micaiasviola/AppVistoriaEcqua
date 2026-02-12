@@ -3,27 +3,73 @@ import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity
 import { supabase } from '../services/supabase';
 
 export default function NewUnitScreen({ route, navigation }) {
-  const { empreendimentoId } = route.params;
-  const [codigo, setCodigo] = useState('');
-  const [andar, setAndar] = useState('');
+  const params = route?.params || {};
+  const empreendimentoId = params?.empreendimentoId;
+  const editingId = params?.unitId || null;
+  const [codigo, setCodigo] = useState(params?.codigo || '');
+  const [andar, setAndar] = useState(params?.andar || '');
   const [loading, setLoading] = useState(false);
 
-  async function handleCreate() {
+  async function handleCreateOrUpdate() {
     if (!codigo) return Alert.alert("Erro", "Código da unidade é obrigatório.");
 
     setLoading(true);
-    const { error } = await supabase
-      .from('unidades')
-      .insert([{ empreendimento_id: empreendimentoId, codigo, andar }]);
-
-    setLoading(false);
-
-    if (error) {
-      Alert.alert("Erro", error.message);
+    if (editingId) {
+      const { error } = await supabase.from('unidades').update({ codigo, andar }).eq('id', editingId);
+      setLoading(false);
+      if (error) Alert.alert('Erro', error.message); else {
+        Alert.alert('Sucesso', 'Unidade atualizada!');
+        if (navigation.canGoBack && navigation.canGoBack()) navigation.goBack(); else navigation.navigate('UnidadesTab', { screen: 'Home' });
+      }
     } else {
-      Alert.alert("Sucesso", "Unidade salva!");
-      if (navigation.canGoBack && navigation.canGoBack()) navigation.goBack(); else navigation.navigate('UnidadesTab', { screen: 'Home' });
+      const { error } = await supabase
+        .from('unidades')
+        .insert([{ empreendimento_id: empreendimentoId, codigo, andar }]);
+
+      setLoading(false);
+
+      if (error) {
+        Alert.alert("Erro", error.message);
+      } else {
+        Alert.alert("Sucesso", "Unidade salva!");
+        if (navigation.canGoBack && navigation.canGoBack()) navigation.goBack(); else navigation.navigate('UnidadesTab', { screen: 'Home' });
+      }
     }
+  }
+
+  async function handleDelete() {
+    if (!editingId) return;
+    Alert.alert('Excluir unidade', 'Essa unidade possui vistorias? Todas as vistorias relacionadas serão excluídas permanentemente. Deseja continuar?', [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Excluir', style: 'destructive', onPress: async () => {
+        try {
+          setLoading(true);
+          const { data: vistorias, error: vErr } = await supabase.from('vistorias').select('id').eq('unidade_id', editingId);
+          if (vErr) console.error('Erro buscando vistorias:', vErr);
+          const vistIds = (vistorias || []).map(v => v.id);
+          if (vistIds.length > 0) {
+            const { data: itens, error: iErr } = await supabase.from('itens_vistoria').select('id').in('vistoria_id', vistIds);
+            if (iErr) console.error('Erro buscando itens:', iErr);
+            const itemIds = (itens || []).map(it => it.id);
+            if (itemIds.length > 0) await supabase.from('fotos_vistoria').delete().in('item_id', itemIds);
+            await supabase.from('itens_vistoria').delete().in('vistoria_id', vistIds);
+            await supabase.from('vistorias').delete().in('id', vistIds);
+          }
+
+          const { error: delErr } = await supabase.from('unidades').delete().eq('id', editingId);
+          if (delErr) {
+            console.error('Erro excluindo unidade:', delErr);
+            Alert.alert('Erro', 'Não foi possível excluir a unidade.');
+          } else {
+            Alert.alert('Sucesso', 'Unidade excluída.');
+            if (navigation.canGoBack && navigation.canGoBack()) navigation.goBack(); else navigation.navigate('UnidadesTab', { screen: 'Home' });
+          }
+        } catch (e) {
+          console.error('Erro ao excluir unidade:', e);
+          Alert.alert('Erro', 'Não foi possível excluir a unidade.');
+        } finally { setLoading(false); }
+      } }
+    ]);
   }
 
   return (
@@ -43,9 +89,14 @@ export default function NewUnitScreen({ route, navigation }) {
       <Text style={styles.label}>Andar (Opcional)</Text>
       <TextInput style={styles.input} value={andar} onChangeText={setAndar} placeholder="Ex: 15" keyboardType="numeric" />
 
-      <TouchableOpacity style={styles.button} onPress={handleCreate} disabled={loading}>
-        {loading ? <ActivityIndicator color="#fff"/> : <Text style={styles.buttonText}>SALVAR UNIDADE</Text>}
+      <TouchableOpacity style={styles.button} onPress={handleCreateOrUpdate} disabled={loading}>
+        {loading ? <ActivityIndicator color="#fff"/> : <Text style={styles.buttonText}>{editingId ? 'ATUALIZAR UNIDADE' : 'SALVAR UNIDADE'}</Text>}
       </TouchableOpacity>
+      {editingId ? (
+        <TouchableOpacity style={[styles.button, { backgroundColor: '#c0392b', marginTop: 12 }]} onPress={handleDelete} disabled={loading}>
+          {loading ? <ActivityIndicator color="#fff"/> : <Text style={styles.buttonText}>EXCLUIR UNIDADE</Text>}
+        </TouchableOpacity>
+      ) : null}
     </View>
   );
 }

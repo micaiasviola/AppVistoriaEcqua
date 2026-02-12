@@ -2,28 +2,86 @@ import { useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { supabase } from '../services/supabase';
 
-export default function NewProjectScreen({ navigation }) {
-  const [nome, setNome] = useState('');
-  const [endereco, setEndereco] = useState('');
-  const [cliente, setCliente] = useState('');
+export default function NewProjectScreen({ route, navigation }) {
+  const params = route?.params || {};
+  const editingId = params?.empreendimentoId || null;
+  const [nome, setNome] = useState(params?.nome || '');
+  const [endereco, setEndereco] = useState(params?.endereco || '');
+  const [cliente, setCliente] = useState(params?.cliente || '');
   const [loading, setLoading] = useState(false);
 
-  async function handleCreate() {
+  async function handleCreateOrUpdate() {
     if (!nome || !endereco) return Alert.alert("Atenção", "Nome e Endereço são obrigatórios.");
 
     setLoading(true);
-    const { error } = await supabase
-      .from('empreendimentos')
-      .insert([{ nome, endereco, cliente }]);
-
-    setLoading(false);
-
-    if (error) {
-      Alert.alert("Erro", error.message);
+    if (editingId) {
+      const { error } = await supabase.from('empreendimentos').update({ nome, endereco, cliente }).eq('id', editingId);
+      setLoading(false);
+      if (error) Alert.alert('Erro', error.message); else {
+        Alert.alert('Sucesso', 'Empreendimento atualizado!');
+        if (navigation.canGoBack && navigation.canGoBack()) navigation.goBack(); else navigation.navigate('UnidadesTab', { screen: 'Home' });
+      }
     } else {
-      Alert.alert("Sucesso", "Empreendimento cadastrado!");
-      if (navigation.canGoBack && navigation.canGoBack()) navigation.goBack(); else navigation.navigate('UnidadesTab', { screen: 'Home' });
+      const { error } = await supabase
+        .from('empreendimentos')
+        .insert([{ nome, endereco, cliente }]);
+
+      setLoading(false);
+
+      if (error) {
+        Alert.alert("Erro", error.message);
+      } else {
+        Alert.alert("Sucesso", "Empreendimento cadastrado!");
+        if (navigation.canGoBack && navigation.canGoBack()) navigation.goBack(); else navigation.navigate('UnidadesTab', { screen: 'Home' });
+      }
     }
+  }
+
+  async function handleDelete() {
+    if (!editingId) return;
+    Alert.alert('Excluir empreendimento', 'Excluir este empreendimento removerá permanentemente todas as unidades e vistorias associadas. Deseja continuar?', [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Excluir', style: 'destructive', onPress: async () => {
+        try {
+          setLoading(true);
+          // busca unidades
+          const { data: units, error: uErr } = await supabase.from('unidades').select('id').eq('empreendimento_id', editingId);
+          if (uErr) console.error('Erro buscando unidades:', uErr);
+          const unitIds = (units || []).map(u => u.id);
+
+          // busca vistorias nas unidades
+          let vistIds = [];
+          if (unitIds.length > 0) {
+            const { data: vists, error: vErr } = await supabase.from('vistorias').select('id').in('unidade_id', unitIds);
+            if (vErr) console.error('Erro buscando vistorias:', vErr);
+            vistIds = (vists || []).map(v => v.id);
+          }
+
+          if (vistIds.length > 0) {
+            const { data: itens, error: iErr } = await supabase.from('itens_vistoria').select('id').in('vistoria_id', vistIds);
+            if (iErr) console.error('Erro buscando itens:', iErr);
+            const itemIds = (itens || []).map(it => it.id);
+            if (itemIds.length > 0) await supabase.from('fotos_vistoria').delete().in('item_id', itemIds);
+            await supabase.from('itens_vistoria').delete().in('vistoria_id', vistIds);
+            await supabase.from('vistorias').delete().in('id', vistIds);
+          }
+
+          if (unitIds.length > 0) await supabase.from('unidades').delete().in('id', unitIds);
+
+          const { error: delErr } = await supabase.from('empreendimentos').delete().eq('id', editingId);
+          if (delErr) {
+            console.error('Erro excluindo empreendimento:', delErr);
+            Alert.alert('Erro', 'Não foi possível excluir o empreendimento.');
+          } else {
+            Alert.alert('Sucesso', 'Empreendimento e dados associados excluídos.');
+            if (navigation.canGoBack && navigation.canGoBack()) navigation.goBack(); else navigation.navigate('UnidadesTab', { screen: 'Home' });
+          }
+        } catch (e) {
+          console.error('Erro ao excluir empreendimento:', e);
+          Alert.alert('Erro', 'Não foi possível excluir o empreendimento.');
+        } finally { setLoading(false); }
+      } }
+    ]);
   }
 
   return (
@@ -46,9 +104,14 @@ export default function NewProjectScreen({ navigation }) {
       <Text style={styles.label}>Cliente / Construtora</Text>
       <TextInput style={styles.input} value={cliente} onChangeText={setCliente} placeholder="Ex: Ricardo Gazoli" />
 
-      <TouchableOpacity style={styles.button} onPress={handleCreate} disabled={loading}>
-        {loading ? <ActivityIndicator color="#fff"/> : <Text style={styles.buttonText}>SALVAR OBRA</Text>}
+      <TouchableOpacity style={styles.button} onPress={handleCreateOrUpdate} disabled={loading}>
+        {loading ? <ActivityIndicator color="#fff"/> : <Text style={styles.buttonText}>{editingId ? 'ATUALIZAR OBRA' : 'SALVAR OBRA'}</Text>}
       </TouchableOpacity>
+      {editingId ? (
+        <TouchableOpacity style={[styles.button, { backgroundColor: '#c0392b', marginTop: 12 }]} onPress={handleDelete} disabled={loading}>
+          {loading ? <ActivityIndicator color="#fff"/> : <Text style={styles.buttonText}>EXCLUIR OBRA</Text>}
+        </TouchableOpacity>
+      ) : null}
     </View>
   );
 }

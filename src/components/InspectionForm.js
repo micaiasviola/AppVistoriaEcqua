@@ -37,13 +37,14 @@ function InspectionForm({
   return (
     <View accessible accessibilityLabel="Formulário de inspeção" accessibilityHint="Preencha os campos para adicionar ou editar itens da vistoria">
       {/* 1. AMBIENTE */}
-      <Text style={styles.label} accessibilityLabel="Campo Ambiente" accessibilityHint="Selecione o ambiente da vistoria">1. Ambiente:</Text>
-      <View style={styles.pickerContainer}>
+      <View style={{ marginBottom: 12 }}>
+        <Text style={styles.label} accessibilityLabel="Campo Ambiente" accessibilityHint="Selecione o ambiente da vistoria">1. Ambiente:</Text>
+        <View style={styles.pickerContainer}>
         <Picker
-          selectedValue={ambienteIdSel}
+          selectedValue={ambienteIdSel ? String(ambienteIdSel) : ''}
           onValueChange={(val) => {
             setAmbienteIdSel(val);
-            const amb = ambientes.find(a => a.id === val);
+            const amb = ambientes.find(a => String(a.id) === String(val));
             if (amb) setAmbienteNomeSel(amb.nome);
             setCategoriaSel('');
             setItemIdSel('');
@@ -55,18 +56,19 @@ function InspectionForm({
         >
           <Picker.Item label="Selecione o ambiente..." value="" accessibilityLabel="Selecione o ambiente" />
           {ambientes.map(amb => (
-            <Picker.Item key={amb.id} label={amb.nome} value={amb.id} accessibilityLabel={amb.nome} />
+            <Picker.Item key={amb.id} label={amb.nome} value={String(amb.id)} accessibilityLabel={amb.nome} />
           ))}
         </Picker>
+      </View>
       </View>
 
       {/* 2. DISCIPLINA/CATEGORIA */}
       {ambienteIdSel && (
-        <>
+        <View style={{ marginBottom: 12 }}>
           <Text style={styles.label} accessibilityLabel="Campo Disciplina" accessibilityHint="Selecione a disciplina da vistoria">2. Disciplina:</Text>
           <View style={styles.pickerContainer}>
             <Picker
-              selectedValue={categoriaSel}
+              selectedValue={categoriaSel ? String(categoriaSel) : ''}
               onValueChange={(val) => {
                 setCategoriaSel(val);
                 setItemIdSel('');
@@ -78,23 +80,23 @@ function InspectionForm({
             >
               <Picker.Item label="Selecione a disciplina..." value="" accessibilityLabel="Selecione a disciplina" />
               {categorias.map(cat => (
-                <Picker.Item key={cat} label={cat} value={cat} accessibilityLabel={cat} />
+                <Picker.Item key={cat} label={cat} value={String(cat)} accessibilityLabel={cat} />
               ))}
             </Picker>
           </View>
-        </>
+        </View>
       )}
 
       {/* 3. ITEM */}
       {categoriaSel && (
-        <>
+        <View style={{ marginBottom: 12 }}>
           <Text style={styles.label} accessibilityLabel="Campo Item" accessibilityHint="Selecione o item da vistoria">3. Item:</Text>
           <View style={styles.pickerContainer}>
             <Picker
-              selectedValue={itemIdSel}
+              selectedValue={itemIdSel ? String(itemIdSel) : ''}
               onValueChange={(val) => {
                 setItemIdSel(val);
-                const item = itensFinais.find(i => i.id === val);
+                const item = itensFinais.find(i => String(i.id) === String(val));
                 if (item) setItemNomeSel(item.descricao);
               }}
               style={styles.picker}
@@ -103,16 +105,16 @@ function InspectionForm({
             >
               <Picker.Item label="Selecione o item..." value="" accessibilityLabel="Selecione o item" />
               {itensFinais.map(item => (
-                <Picker.Item key={item.id} label={item.descricao} value={item.id} accessibilityLabel={item.descricao} />
+                <Picker.Item key={item.id} label={item.descricao} value={String(item.id)} accessibilityLabel={item.descricao} />
               ))}
             </Picker>
           </View>
-        </>
+        </View>
       )}
 
       {/* 4. FOTOS */}
       {itemIdSel && (
-        <>
+        <View style={{ marginBottom: 12 }}>
           <Text style={styles.label} accessibilityLabel="Campo Fotos" accessibilityHint="Adicione fotos do item">4. Fotos:</Text>
           <View style={styles.photosRow}>
             {fotos.map((uri, idx) => (
@@ -133,12 +135,13 @@ function InspectionForm({
               <Text style={styles.photoAddText}>Adicionar</Text>
             </TouchableOpacity>
           </View>
-        </>
+        </View>
       )}
 
       {/* 5. OBSERVAÇÃO */}
-      <Text style={styles.label} accessibilityLabel="Campo Observação" accessibilityHint="Descreva o item da vistoria">5. Observação:</Text>
-      <TextInput
+      <View style={{ marginBottom: 12 }}>
+        <Text style={styles.label} accessibilityLabel="Campo Observação" accessibilityHint="Descreva o item da vistoria">5. Observação:</Text>
+        <TextInput
         placeholder="Descreva..."
         value={descricao}
         onChangeText={setDescricao}
@@ -147,6 +150,7 @@ function InspectionForm({
         accessibilityLabel="Campo de texto Observação"
         accessibilityHint="Digite a descrição do item"
       />
+      </View>
       {vistoriaTipo === 'revistoria' && (
         <View style={styles.switchRow}>
           <Text style={styles.switchLabel}>Resolvido?</Text>
@@ -159,7 +163,7 @@ function InspectionForm({
         </View>
       )}
       {vistoriaTipo === 'revistoria' && statusSel === 'resolvido' && (
-        <>
+        <View style={{ marginBottom: 12 }}>
           <Text style={styles.label} accessibilityLabel="Campo Observação da resolução" accessibilityHint="Descreva como o item foi resolvido">6. Observacao da resolucao:</Text>
           <TextInput
             placeholder="Descreva a resolucao..."
@@ -170,9 +174,9 @@ function InspectionForm({
             accessibilityLabel="Campo de texto Observação da resolução"
             accessibilityHint="Digite como o item foi resolvido"
           />
-        </>
+        </View>
       )}
-      <TouchableOpacity onPress={confirmarApontamento} style={styles.buttonConfirmar}>
+      <TouchableOpacity onPress={confirmarApontamento} accessibilityRole="button" style={[styles.buttonConfirmar, { marginTop: 8, paddingVertical: 14 }]}>
         {syncing ? (
           <Ionicons name="sync" size={20} color="#fff" accessibilityLabel="Salvando item" accessibilityHint="Aguarde, item sendo salvo" />
         ) : (
@@ -184,4 +188,3 @@ function InspectionForm({
 }
 
 export default InspectionForm;
-

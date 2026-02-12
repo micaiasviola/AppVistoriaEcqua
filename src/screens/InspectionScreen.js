@@ -4,7 +4,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 // CommonActions removed: using navigation.navigate to preserve history
 import * as FileSystem from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -88,6 +88,30 @@ export default function InspectionScreen({ route, navigation }) {
     const [agendaDateObj, setAgendaDateObj] = useState(new Date());
     const [showDatePicker, setShowDatePicker] = useState(false);
 
+    // Overlay e feedback
+    const showOverlay = loading || syncing;
+    const [feedbackMsg, setFeedbackMsg] = useState(null);
+    const feedbackTimerRef = useRef(null);
+    const FEEDBACK_DURATION = 800; // ms (reduzido para feedbacks mais rápidos)
+
+    const showFeedback = (msg, ms = FEEDBACK_DURATION) => {
+        setFeedbackMsg(msg);
+        if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
+        feedbackTimerRef.current = setTimeout(() => {
+            setFeedbackMsg(null);
+            feedbackTimerRef.current = null;
+        }, ms);
+    };
+
+    useEffect(() => {
+        return () => {
+            if (feedbackTimerRef.current) {
+                clearTimeout(feedbackTimerRef.current);
+                feedbackTimerRef.current = null;
+            }
+        };
+    }, []);
+
     // --- TODOS OS EFEITOS DEVEM VIR ANTES DE QUALQUER RETURN ---
     // Inicialização
     useEffect(() => {
@@ -128,14 +152,48 @@ export default function InspectionScreen({ route, navigation }) {
         return null;
     }
 
-    // Função global para voltar à lista de vistorias (preserva histórico)
-    const resetToList = () => {
-        if (!algumParametroFaltando) {
-            navigation.navigate('VistoriaList', { unidadeId, codigoUnidade, modoConstrutora: !!modoConstrutora, tipoVistoria: vistoriaTipo });
-        } else {
-            Alert.alert('Erro de navegação', 'Informações da unidade não encontradas. Retornando à tela inicial.');
-            navigation.navigate('UnidadesTab', { screen: 'Home' });
+    // Helper: tenta navegar de volta para uma rota existente no stack
+    const popToRouteIfPresent = (routeName) => {
+        try {
+            const state = navigation.getState();
+            const routes = state.routes || [];
+            // Procura última ocorrência da rota
+            const lastIndex = routes.map(r => r.name).lastIndexOf(routeName);
+            if (lastIndex > -1 && typeof state.index === 'number') {
+                const delta = state.index - lastIndex;
+                if (delta > 0) {
+                    navigation.pop(delta);
+                }
+                return true;
+            }
+        } catch (e) {
+            // fallback: ignore
         }
+        return false;
+    };
+
+    // Função global para voltar/principalmente ir para a lista de vistorias
+    const resetToList = () => {
+        if (algumParametroFaltando) {
+            Alert.alert('Erro de navegação', 'Informações da unidade não encontradas. Retornando à tela inicial.');
+            navigation.replace('UnidadesTab', { screen: 'Home' });
+            return;
+        }
+
+        // Se já existir VistoriaList no histórico, volte para ela (evita duplicatas)
+        if (popToRouteIfPresent('VistoriaList')) return;
+
+        // Senão substitui a rota atual por uma nova VistoriaList
+        navigation.replace('VistoriaList', { unidadeId, codigoUnidade, modoConstrutora: !!modoConstrutora, tipoVistoria: vistoriaTipo });
+    };
+
+    // Força retorno para lista e recarrega (usa replace para garantir refresh)
+    const resetToListForceReload = () => {
+        if (algumParametroFaltando) {
+            navigation.replace('UnidadesTab', { screen: 'Home' });
+            return;
+        }
+        navigation.replace('VistoriaList', { unidadeId, codigoUnidade, modoConstrutora: !!modoConstrutora, tipoVistoria: vistoriaTipo, _refresh: Date.now() });
     };
 
     const carregarDadosIniciais = async () => {
@@ -230,6 +288,28 @@ export default function InspectionScreen({ route, navigation }) {
                         uris: fotosPorItem[i.id] || [],
                         synced: true
                     }));
+
+                    // Enriquecer com dados do checklist (categoria e descricao do item) quando possível
+                    try {
+                        const checklistIds = itens.map(it => it.checklist_item_id).filter(Boolean);
+                        if (checklistIds.length) {
+                            const { data: checklistRows } = await supabase
+                                .from('checklist_itens')
+                                .select('id, descricao, categoria')
+                                .in('id', checklistIds);
+                            const checklistMap = {};
+                            if (checklistRows) checklistRows.forEach(r => { checklistMap[String(r.id)] = r; });
+                            remoteLista = remoteLista.map(r => {
+                                const ck = checklistMap[String(r.checklist_item_id)];
+                                if (ck) {
+                                    return { ...r, categoria: ck.categoria || r.categoria, item: ck.descricao || r.item };
+                                }
+                                return r;
+                            });
+                        }
+                    } catch (e) {
+                        console.error('Erro carregando checklist para enriquecer itens:', e);
+                    }
                 }
             }
             // Mescla itens locais pendentes (id não UUID) com remotos
@@ -245,11 +325,6 @@ export default function InspectionScreen({ route, navigation }) {
             setLoading(false);
         }
     };
-
-    // Loader overlay para loading/syncing
-    const showOverlay = loading || syncing;
-    // Mensagem de feedback
-    const [feedbackMsg, setFeedbackMsg] = useState(null);
 
     if (loading) return (
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f2f2f7' }}>
@@ -584,8 +659,7 @@ export default function InspectionScreen({ route, navigation }) {
     // --- SALVAR NO BANCO ---
     const confirmarApontamento = async () => {
         if (!ambienteIdSel || !categoriaSel || !itemIdSel) {
-            setFeedbackMsg("Preencha Ambiente, Disciplina e Item.");
-            setTimeout(() => setFeedbackMsg(null), 2500);
+            showFeedback("Preencha Ambiente, Disciplina e Item.");
             return;
         }
 
@@ -635,7 +709,7 @@ export default function InspectionScreen({ route, navigation }) {
     const salvarNoSupabase = async (item) => {
         try {
             setSyncing(true);
-            setFeedbackMsg("Sincronizando item...");
+            showFeedback("Sincronizando item...");
             const { urls, paths, allUploaded } = await prepararFotosParaUpload(item.uris, item.id);
 
             const payload = {
@@ -680,7 +754,7 @@ export default function InspectionScreen({ route, navigation }) {
     };
 
     // --- OUTRAS AÇÕES ---
-    const editarItem = (item) => {
+    const editarItem = async (item) => {
         // Validação extra: se algum parâmetro essencial estiver faltando, redireciona para Home
         // Permite editar itens locais pendentes mesmo sem vistoriaIdAtual
         if (!unidadeId || unidadeId === 'undefined' || (!vistoriaIdAtual && !item.vistoria_id) || (vistoriaIdAtual === 'undefined' && !item.vistoria_id)) {
@@ -689,11 +763,36 @@ export default function InspectionScreen({ route, navigation }) {
             return;
         }
         setEditandoId(item.id);
-        const amb = ambientes.find(a => a.id === item.ambiente_id);
-        setAmbienteIdSel(item.ambiente_id);
+        const amb = ambientes.find(a => String(a.id) === String(item.ambiente_id));
+        const ambienteIdStr = item.ambiente_id ? String(item.ambiente_id) : '';
+        setAmbienteIdSel(ambienteIdStr);
         setAmbienteNomeSel(amb?.nome || item.ambiente || '');
-        setCategoriaSel(item.categoria || '');
-        setItemIdSel(item.checklist_item_id || '');
+
+        try {
+            // Busca categorias e itens do servidor para garantir que os selects tenham opções
+            if (ambienteIdStr) {
+                const { data: cats } = await supabase.from('checklist_itens').select('categoria').eq('ambiente_id', ambienteIdStr);
+                if (cats) {
+                    const uniqueCats = [...new Set(cats.map(i => i.categoria))].sort();
+                    setCategorias(uniqueCats);
+                }
+            }
+
+            if (item.categoria) {
+                setCategoriaSel(item.categoria);
+                const { data: itens } = await supabase.from('checklist_itens').select('id, descricao').eq('ambiente_id', ambienteIdStr).eq('categoria', item.categoria);
+                if (itens) setItensFinais(itens.sort((a,b) => a.descricao.localeCompare(b.descricao)));
+            } else {
+                setCategoriaSel('');
+            }
+
+            setItemIdSel(item.checklist_item_id ? String(item.checklist_item_id) : '');
+        } catch (e) {
+            console.error('Erro ao carregar categorias/itens para edição:', e);
+            // fallback: aplica os valores locais mesmo que as opções não tenham sido carregadas
+            setCategoriaSel(item.categoria || '');
+            setItemIdSel(item.checklist_item_id ? String(item.checklist_item_id) : '');
+        }
         setItemNomeSel(item.item || '');
         setDescricao(item.descricao || '');
         setFotos(item.uris && Array.isArray(item.uris) ? item.uris : []);
@@ -706,8 +805,8 @@ export default function InspectionScreen({ route, navigation }) {
         const itemId = item?.id;
         Alert.alert("Excluir", "Confirmar?", [
             { text: "Não" },
-            { text: "Sim", onPress: async () => {
-                setFeedbackMsg("Excluindo item...");
+                { text: "Sim", onPress: async () => {
+                showFeedback("Excluindo item...");
                 const novaLista = apontamentos.filter(i => String(i.id) !== String(itemId));
                 setApontamentos(novaLista);
                 AsyncStorage.setItem(obterCacheKey(vistoriaIdAtual, unidadeId, vistoriaTipo), JSON.stringify(sanitizarListaParaCache(novaLista)));
@@ -728,6 +827,37 @@ export default function InspectionScreen({ route, navigation }) {
                 }
             }}
         ]);
+    };
+
+    // Marca status de um apontamento localmente e tenta sincronizar
+    const marcarStatusApontamento = async (item, novoStatus) => {
+        try {
+            const atualizado = { ...item, status: novoStatus };
+            setApontamentos(prev => prev.map(i => String(i.id) === String(item.id) ? atualizado : i));
+            // Atualiza cache
+            const cacheKey = obterCacheKey(vistoriaIdAtual, unidadeId, vistoriaTipo);
+            const cache = await AsyncStorage.getItem(cacheKey);
+            if (cache) {
+                const lista = JSON.parse(cache).map(i => String(i.id) === String(item.id) ? atualizado : i);
+                await AsyncStorage.setItem(cacheKey, JSON.stringify(sanitizarListaParaCache(lista)));
+            }
+
+            showFeedback(novoStatus === 'aprovado' ? 'Item marcado como aprovado' : 'Item marcado como reprovado');
+
+            // Se já está sincronizado e temos conexão, atualiza no Supabase
+            if (item.synced && online) {
+                setSyncing(true);
+                try {
+                    await supabase.from('itens_vistoria').update({ status: novoStatus }).eq('id', item.id);
+                } catch (e) {
+                    console.error('Erro atualizando status do item:', e);
+                } finally {
+                    setSyncing(false);
+                }
+            }
+        } catch (e) {
+            console.error('Erro ao marcar status do apontamento:', e);
+        }
     };
 
     // Helpers de Cache/Sync
@@ -773,11 +903,11 @@ export default function InspectionScreen({ route, navigation }) {
     };
 
     const criarRevistoriaAgendada = async () => {
-        // Considera todos itens pendentes, incluindo locais (id não UUID)
+        // Considera apenas itens reprovados (devem ser reavaliados na revistoria)
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        const pendentes = apontamentos.filter((i) => i.status !== 'resolvido');
+        const pendentes = apontamentos.filter((i) => i.status === 'reprovado');
         if (!pendentes.length) {
-            Alert.alert('Info', 'Nao ha itens pendentes.');
+            Alert.alert('Info', 'Nao ha itens reprovados para criar uma revistoria.');
             return;
         }
         // Sincroniza itens locais antes de criar revistoria
@@ -884,7 +1014,10 @@ export default function InspectionScreen({ route, navigation }) {
 
         setAgendaVisible(false);
         setAgendaData('');
-        navigation.navigate('VistoriaList', { unidadeId, codigoUnidade, modoConstrutora: false, tipoVistoria: 'revistoria' });
+        // If there's an existing VistoriaList in the stack, pop to it; otherwise replace current route
+        if (!popToRouteIfPresent('VistoriaList')) {
+            navigation.replace('VistoriaList', { unidadeId, codigoUnidade, modoConstrutora: false, tipoVistoria: 'revistoria' });
+        }
     };
 
     const handleBotaoFinalizar = () => {
@@ -902,6 +1035,11 @@ export default function InspectionScreen({ route, navigation }) {
             
             if (modoConstrutora && online && vistoriaIdAtual) {
                 let urlFoto = null;
+                // Determina aprovacão a partir dos apontamentos: se houver algum 'reprovado', a vistoria é reprovada
+                const totalItens = apontamentos.length;
+                const reprovadosCount = apontamentos.filter(i => i.status === 'reprovado').length;
+                const todosAprovados = (totalItens === 0) ? dadosExtras.aprovado : (reprovadosCount === 0);
+
                 if (dadosExtras.fotoChaves) {
                     const ext = dadosExtras.fotoChaves.split('.').pop();
                     const path = `${unidadeId}/chaves_${Date.now()}.${ext}`;
@@ -915,33 +1053,110 @@ export default function InspectionScreen({ route, navigation }) {
                 }
 
                 const payload = {
-                    status_aprovacao: dadosExtras.aprovado ? 'aprovado' : 'reprovado',
+                    status_aprovacao: todosAprovados ? 'aprovado' : 'reprovado',
                     chaves_entregues: dadosExtras.temChaves,
                     observacao_final: dadosExtras.obsFinal,
                     foto_chaves: urlFoto
                 };
-                await supabase.from('vistorias').update(payload).eq('id', vistoriaIdAtual);
+                const { data: updatedV, error: updatedErr } = await supabase.from('vistorias').update(payload).eq('id', vistoriaIdAtual).select().maybeSingle();
+                if (updatedErr) {
+                    console.error('Erro atualizando vistoria (modoConstrutora):', updatedErr);
+                    Alert.alert('Erro', 'Não foi possível atualizar o status da vistoria no servidor.');
+                } else {
+                    showFeedback('Vistoria atualizada');
+                }
+            }
+
+            // Se esta vistoria for uma revistoria, sincroniza resultado com a vistoria pai
+            try {
+                if (vistoriaTipo === 'revistoria' && online && vistoriaIdAtual) {
+                    // busca itens da revistoria
+                    const { data: revItens, error: revItensErr } = await supabase
+                        .from('itens_vistoria')
+                        .select('id, status, item_origem_id')
+                        .eq('vistoria_id', vistoriaIdAtual);
+                    if (!revItensErr && Array.isArray(revItens)) {
+                        const anyReprovado = revItens.some(i => i.status === 'reprovado');
+                        // pega id da vistoria pai
+                        const { data: thisVistoria } = await supabase.from('vistorias').select('vistoria_pai_id').eq('id', vistoriaIdAtual).maybeSingle();
+                        const parentId = thisVistoria?.vistoria_pai_id;
+                        if (parentId) {
+                            if (!anyReprovado) {
+                                // tudo aprovado -> marca vistoria pai como aprovada
+                                const { data: upParentOk, error: upParentErr } = await supabase.from('vistorias').update({ status_aprovacao: 'aprovado' }).eq('id', parentId).select().maybeSingle();
+                                if (upParentErr) {
+                                    console.error('Erro atualizando vistoria pai para aprovado:', upParentErr);
+                                }
+                            } else {
+                                // ainda há reprovados -> garante que pai fique reprovado
+                                const { data: upParentOk, error: upParentErr } = await supabase.from('vistorias').update({ status_aprovacao: 'reprovado' }).eq('id', parentId).select().maybeSingle();
+                                if (upParentErr) {
+                                    console.error('Erro atualizando vistoria pai para reprovado:', upParentErr);
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('Erro sincronizando revistoria com vistoria pai:', e);
             }
 
             setModalVisible(false);
 
-
-
             if (modoConstrutora) {
+                const reprovadosCount = apontamentos.filter(i => i.status === 'reprovado').length;
+                if (reprovadosCount === 0) {
+                    Alert.alert("Vistoria Finalizada", "A vistoria foi salva.", [
+                        { text: 'OK', onPress: resetToList }
+                    ]);
+                    return;
+                }
+
                 Alert.alert("Vistoria finalizada", "Deseja agendar revistoria?", [
                     {
                         text: 'Nao',
-                        onPress: resetToList
+                        onPress: async () => {
+                            try {
+                                const { data: upd, error: updErr } = await supabase.from('vistorias').update({ status_aprovacao: 'reprovado' }).eq('id', vistoriaIdAtual || vistoriaId).select().maybeSingle();
+                                if (updErr) {
+                                    console.error('Erro atualizando status_aprovacao (Nao):', updErr);
+                                    Alert.alert('Erro', 'Não foi possível marcar vistoria como reprovada no servidor.');
+                                } else {
+                                    showFeedback('Vistoria marcada como reprovada');
+                                }
+                            } catch (e) {
+                                console.error('Erro atualizando status_aprovacao:', e);
+                            }
+                            resetToListForceReload();
+                        }
                     },
                     { text: 'Agendar', onPress: () => setAgendaVisible(true) }
                 ]);
                 return;
             }
 
+            // Para não-construtora, marca como concluida também no servidor
+            if (!modoConstrutora && online && vistoriaIdAtual) {
+                try {
+                    const { data: up, error: upErr } = await supabase.from('vistorias').update({ }).eq('id', vistoriaIdAtual).select().maybeSingle();
+                    // Nota: não atualizamos o campo `status` pois o enum no banco não aceita 'concluida'.
+                    // Usamos `status_aprovacao` para indicar que a vistoria foi finalizada/aprovada/reprovada.
+                    // Se for necessário, executar migration no banco para adicionar um valor válido ao enum.
+                    if (upErr) {
+                        console.error('Erro atualizando status da vistoria (nao-construtora):', upErr);
+                        Alert.alert('Erro', 'Não foi possível atualizar o status da vistoria no servidor.');
+                    } else {
+                        showFeedback('Vistoria marcada como concluída');
+                    }
+                } catch (e) {
+                    console.error('Erro atualizando status da vistoria:', e);
+                }
+            }
+
             Alert.alert("Vistoria Finalizada", "A vistoria foi salva.", [
                 {
                     text: 'OK',
-                    onPress: resetToList
+                    onPress: resetToListForceReload
                 }
             ]);
         } catch (e) {
@@ -995,19 +1210,21 @@ export default function InspectionScreen({ route, navigation }) {
                         onPress={async () => {
                             if (loading || syncing) return;
                             // Navegação robusta: volta para lista ou home
-                            if (navigation.canGoBack && navigation.canGoBack()) {
-                                navigation.goBack();
-                            } else if (unidadeId && codigoUnidade) {
-                                navigation.navigate('VistoriaList', { unidadeId, codigoUnidade, modoConstrutora: !!modoConstrutora, tipoVistoria: vistoriaTipo });
-                            } else {
-                                navigation.navigate('UnidadesTab', { screen: 'Home' });
-                            }
+                                    if (navigation.canGoBack && navigation.canGoBack()) {
+                                        navigation.goBack();
+                                    } else if (unidadeId && codigoUnidade) {
+                                        // Se já houver VistoriaList no histórico, volte para ela; senão substitui
+                                        if (!popToRouteIfPresent('VistoriaList')) {
+                                            navigation.replace('VistoriaList', { unidadeId, codigoUnidade, modoConstrutora: !!modoConstrutora, tipoVistoria: vistoriaTipo });
+                                        }
+                                    } else {
+                                        navigation.replace('UnidadesTab', { screen: 'Home' });
+                                    }
                         }}
                         style={{ flexDirection: 'row', alignItems: 'center', opacity: (loading || syncing) ? 0.5 : 1 }}
                         disabled={loading || syncing}
                     >
                         <Ionicons name="arrow-back" size={24} color="#007AFF" />
-                        <Text style={{color: '#007AFF', marginLeft: 5}}>Voltar</Text>
                     </TouchableOpacity>
                 }
                 rightContent={
@@ -1063,11 +1280,27 @@ export default function InspectionScreen({ route, navigation }) {
                                     {item.status === 'resolvido' && (
                                         <Text style={{fontSize:9, color:'green'}}>RESOLVIDO</Text>
                                     )}
+                                    {item.status === 'aprovado' && (
+                                        <Text style={{fontSize:11, color:'#0a8043', fontWeight:'600'}}>APROVADO</Text>
+                                    )}
+                                    {item.status === 'reprovado' && (
+                                        <Text style={{fontSize:11, color:'#c0392b', fontWeight:'600'}}>REPROVADO</Text>
+                                    )}
                                     {!item.synced && <Text style={{fontSize:9, color:'orange'}}>PENDENTE</Text>}
                                 </View>
-                                <View>
-                                    <TouchableOpacity onPress={() => editarItem(item)}><Ionicons name="create-outline" size={24} color="#666" /></TouchableOpacity>
-                                    <TouchableOpacity onPress={() => excluirItem(item)}><Ionicons name="trash-outline" size={24} color="red" /></TouchableOpacity>
+                                <View style={{ alignItems: 'flex-end' }}>
+                                    <View style={{ flexDirection: 'row', marginBottom: 8 }}>
+                                        <TouchableOpacity onPress={() => marcarStatusApontamento(item, 'aprovado')} style={{ marginRight: 8 }} accessibilityLabel="Marcar como aprovado">
+                                            <Ionicons name="checkmark-circle-outline" size={22} color="#0a8043" />
+                                        </TouchableOpacity>
+                                        <TouchableOpacity onPress={() => marcarStatusApontamento(item, 'reprovado')} style={{ marginRight: 8 }} accessibilityLabel="Marcar como reprovado">
+                                            <Ionicons name="close-circle-outline" size={22} color="#c0392b" />
+                                        </TouchableOpacity>
+                                    </View>
+                                    <View>
+                                        <TouchableOpacity onPress={() => editarItem(item)}><Ionicons name="create-outline" size={22} color="#666" /></TouchableOpacity>
+                                        <TouchableOpacity onPress={() => excluirItem(item)}><Ionicons name="trash-outline" size={22} color="red" /></TouchableOpacity>
+                                    </View>
                                 </View>
                             </View>
                         ))}
@@ -1139,10 +1372,8 @@ export default function InspectionScreen({ route, navigation }) {
                             />
                         )}
                         <View style={styles.modalButtons}>
-                            <TouchableOpacity onPress={() => setAgendaVisible(false)} style={styles.modalBtnCancel}><Text>Voltar</Text></TouchableOpacity>
-                                                        <TouchableOpacity onPress={() => setAgendaVisible(false)} style={styles.modalBtnCancel} accessibilityLabel="Voltar" accessibilityHint="Fecha o modal de agendamento"><Text>Voltar</Text></TouchableOpacity>
-                            <TouchableOpacity onPress={criarRevistoriaAgendada} style={styles.modalBtnConfirm}><Text style={{color:'#fff'}}>AGENDAR</Text></TouchableOpacity>
-                                                    <TouchableOpacity onPress={criarRevistoriaAgendada} style={styles.modalBtnConfirm} accessibilityLabel="Agendar revistoria" accessibilityHint="Confirma o agendamento da revistoria"><Text style={{color:'#fff'}}>AGENDAR</Text></TouchableOpacity>
+                            <TouchableOpacity onPress={() => setAgendaVisible(false)} style={styles.modalBtnCancel} accessibilityLabel="Voltar" accessibilityHint="Fecha o modal de agendamento"><Text>Voltar</Text></TouchableOpacity>
+                            <TouchableOpacity onPress={criarRevistoriaAgendada} style={styles.modalBtnConfirm} accessibilityLabel="Agendar revistoria" accessibilityHint="Confirma o agendamento da revistoria"><Text style={{color:'#fff'}}>AGENDAR</Text></TouchableOpacity>
                         </View>
                     </View>
                 </View>
@@ -1168,10 +1399,8 @@ export default function InspectionScreen({ route, navigation }) {
                         )}
                         <TextInput style={styles.input} placeholder="Obs Final..." value={obsFinal} onChangeText={setObsFinal} />
                         <View style={styles.modalButtons}>
-                            <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.modalBtnCancel}><Text>Voltar</Text></TouchableOpacity>
-                                                        <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.modalBtnCancel} accessibilityLabel="Voltar" accessibilityHint="Fecha o modal de conclusão"><Text>Voltar</Text></TouchableOpacity>
-                            <TouchableOpacity onPress={() => processarFinalizacao({ aprovado, temChaves, fotoChaves, obsFinal })} style={styles.modalBtnConfirm}><Text style={{color:'#fff'}}>CONCLUIR</Text></TouchableOpacity>
-                                                    <TouchableOpacity onPress={() => processarFinalizacao({ aprovado, temChaves, fotoChaves, obsFinal })} style={styles.modalBtnConfirm} accessibilityLabel="Concluir vistoria" accessibilityHint="Finaliza a vistoria com os dados informados"><Text style={{color:'#fff'}}>CONCLUIR</Text></TouchableOpacity>
+                            <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.modalBtnCancel} accessibilityLabel="Voltar" accessibilityHint="Fecha o modal de conclusão"><Text>Voltar</Text></TouchableOpacity>
+                            <TouchableOpacity onPress={() => processarFinalizacao({ aprovado, temChaves, fotoChaves, obsFinal })} style={styles.modalBtnConfirm} accessibilityLabel="Concluir vistoria" accessibilityHint="Finaliza a vistoria com os dados informados"><Text style={{color:'#fff'}}>CONCLUIR</Text></TouchableOpacity>
                         </View>
                     </View>
                 </View>
@@ -1199,7 +1428,10 @@ const styles = {
         overflow: 'hidden'
     },
     picker: {
-        height: 44
+        height: 52,
+        paddingVertical: 8,
+        paddingHorizontal: 8,
+        justifyContent: 'center'
     },
     photosRow: {
         flexDirection: 'row',
@@ -1248,6 +1480,8 @@ const styles = {
         padding: 12,
         fontSize: 14,
         minHeight: 44
+    ,
+        marginBottom: 12
     },
     switchRow: {
         flexDirection: 'row',
@@ -1258,7 +1492,7 @@ const styles = {
         borderColor: '#ddd',
         borderRadius: 8,
         padding: 12,
-        marginTop: 8
+        marginTop: 12
     },
     switchLabel: {
         fontSize: 14,
@@ -1320,7 +1554,7 @@ const styles = {
     },
     footerActions: {
         flexDirection: 'row',
-        padding: 16,
+        padding: 18,
         backgroundColor: '#fff',
         borderTopWidth: 1,
         borderTopColor: '#e0e0e0',
@@ -1419,7 +1653,8 @@ const styles = {
     },
     modalButtons: {
         flexDirection: 'row',
-        gap: 12,
+        justifyContent: 'space-between',
+        width: '100%',
         marginTop: 16
     },
     modalBtnCancel: {

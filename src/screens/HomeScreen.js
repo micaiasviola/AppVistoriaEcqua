@@ -1,6 +1,6 @@
 import { useFocusEffect } from '@react-navigation/native';
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity } from 'react-native';
+import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import HeaderContextual from '../../components/HeaderContextual';
 import { supabase } from '../services/supabase';
@@ -62,18 +62,24 @@ export default function HomeScreen({ navigation }) {
           </TouchableOpacity>
         }
         renderItem={({ item }) => (
-          <TouchableOpacity
-            style={styles.item}
-            onPress={() => navigation.navigate('Units', {
-              empreendimentoId: item.id,
-              empreendimentoNome: item.nome,
-              clienteNome: item.cliente || null
-            })}
-          >
-            <Text style={styles.title}>{item.nome}</Text>
-            <Text style={styles.subtitle}>{item.endereco}</Text>
-            {item.cliente ? <Text style={styles.client}>Cliente: {item.cliente}</Text> : null}
-          </TouchableOpacity>
+          <View style={styles.item}>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Units', {
+                empreendimentoId: item.id,
+                empreendimentoNome: item.nome,
+                clienteNome: item.cliente || null
+              })}
+            >
+              <Text style={styles.title}>{item.nome}</Text>
+              <Text style={styles.subtitle}>{item.endereco}</Text>
+              {item.cliente ? <Text style={styles.client}>Cliente: {item.cliente}</Text> : null}
+            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 8 }}>
+              <TouchableOpacity onPress={() => navigation.navigate('NewProject', { empreendimentoId: item.id, nome: item.nome, endereco: item.endereco, cliente: item.cliente })}>
+                <Text style={{ color: '#007AFF', fontSize: 13 }}>Editar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         )}
       />
     </SafeAreaView>
