@@ -1,0 +1,57 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
+* { box-sizing: border-box; }
+body { font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; margin: 0; background: #f5f7fa; color: #111 }
+.header { background: #fff; padding: 18px 28px; border-bottom: 1px solid #eceff3; display:flex; align-items:center; justify-content:space-between }
+.header nav a { margin-left: 16px; color: #2563eb; text-decoration:none; font-weight:600 }
+.app { min-height: 100vh; display:flex; flex-direction:column }
+.main { padding: 28px; flex:1; max-width:1200px; margin:0 auto }
+.grid { display:grid; grid-template-columns: 1fr 420px; gap:28px }
+.list { display:flex; flex-direction:column; gap:14px }
+.card { background:#fff; padding:20px; border-radius:14px; border:1px solid #eef3f7; box-shadow: 0 12px 30px rgba(20,30,40,0.06) }
+.card-row { display:flex; justify-content:space-between; align-items:flex-start }
+.card-content h3 { margin:0 0 8px; font-size:18px }
+.card-content p { margin:6px 0; color:#333 }
+.card-actions { display:flex; gap:10px }
+.icon-btn { display:inline-flex; align-items:center; justify-content:center; width:44px; height:44px; border-radius:12px; border:1px solid #e6ecf1; background:#fff; color:#111; cursor:pointer }
+.icon-btn:hover { transform:translateY(-2px); box-shadow: 0 10px 20px rgba(30,60,90,0.06) }
+.icon-btn.danger { color:#c53030; border-color: rgba(197,48,48,0.12) }
+.actions { margin-top:12px }
+.link { background:none; border:none; color:#2563eb; padding:8px; cursor:pointer }
+.back-btn { font-weight:600; padding:6px 8px; border-radius:8px; border:1px solid transparent }
+.btn-secondary { background:#fff; color:#111; border:1px solid #e6ecf1; padding:10px 14px; border-radius:10px; cursor:pointer }
+.item-photo { width:140px; height:100px; object-fit:cover; border-radius:10px; margin-right:8px; display:inline-block }
+/* Modal */
+.modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.35); display:flex; align-items:center; justify-content:center; z-index:60 }
+.modal { background:#fff; padding:20px; border-radius:14px; width:760px; max-width:96%; box-shadow:0 30px 80px rgba(10,20,30,0.18); border:1px solid #eef3f7 }
+.modal textarea { width:100%; min-height:120px; padding:12px; border-radius:10px; border:1px solid #e6eef6; resize:vertical }
+
+/* Responsive */
+@media (max-width: 900px) {
+	.grid { grid-template-columns: 1fr }
+	.main { padding:16px }
+}
+
+/* Form */
+form { background:#fff; padding:18px; border-radius:10px; border:1px solid #eef3f7 }
+form label { display:block; font-size:13px; color:#374151; margin-bottom:6px }
+form input { width:100%; padding:10px 12px; border-radius:8px; border:1px solid #e6eef6; margin-bottom:12px }
+form button { background:#2563eb; color:#fff; border:none; padding:10px 14px; border-radius:8px; cursor:pointer }
+form button[disabled] { opacity:0.6; cursor:not-allowed }
+
+/* Empreendimentos specific */
+.toolbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:18px }
+.toolbar h2 { margin:0 }
+.toolbar .muted { margin:0; color:#6b7280; font-size:13px }
+.btn-primary { background:#2563eb; color:#fff; border:none; padding:12px 18px; border-radius:10px; cursor:pointer; font-weight:600; margin-right:12px }
+.filters { display:flex; align-items:center; gap:12px; margin-bottom:18px; flex-wrap:wrap }
+.filter-btn { background:#fff; color:#111; border:1px solid #e6ecf1; padding:10px 16px; border-radius:12px; cursor:pointer; font-weight:600; box-shadow: 0 6px 18px rgba(15,23,42,0.04); transition: transform .12s ease, box-shadow .12s ease }
+.filter-btn:hover { transform: translateY(-3px); box-shadow: 0 12px 30px rgba(15,23,42,0.06) }
+.filter-btn:focus { outline: 2px solid rgba(37,99,235,0.12); outline-offset: 2px }
+.cards-grid { display:grid; grid-template-columns: repeat(2, 1fr); gap:18px }
+.cards-grid .card { transition: transform .12s ease, box-shadow .12s ease }
+.cards-grid .card:hover { transform: translateY(-6px); box-shadow: 0 10px 30px rgba(20,40,80,0.06) }
+
+@media (max-width: 900px) {
+	.cards-grid { grid-template-columns: 1fr }
+}
